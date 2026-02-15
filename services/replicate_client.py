@@ -6,6 +6,7 @@ This replaces the old Gemini integration.
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import os
 from typing import Optional, Union, List, Any
@@ -92,7 +93,13 @@ async def run_nano_banana(
             "output_format": "png",
         }
         if images:
-            inputs["image_input"] = images[:8]
+            # Convert bytes to data URI format for Replicate API
+            data_uris = []
+            for img_bytes in images[:8]:
+                b64 = base64.b64encode(img_bytes).decode('utf-8')
+                data_uri = f"data:image/png;base64,{b64}"
+                data_uris.append(data_uri)
+            inputs["image_input"] = data_uris
         if include_aspect_ratio and aspect_ratio:
             # Many Replicate models use 'aspect_ratio'. If it fails, we'll retry.
             inputs["aspect_ratio"] = aspect_ratio

@@ -133,8 +133,14 @@ async def generate_start_callback(update: Update, context: ContextTypes.DEFAULT_
         await update_user_data(telegram_id, tariff=TARIFF_KEY, cost=cost, mode=mode)
 
         header = EDIT_START_TEXT if mode == "edit" else GEN_START_TEXT
+        
+        # Show cost only for non-admins
+        from shared.config import settings
+        is_admin = telegram_id in settings.ADMIN_IDS
+        cost_text = "" if is_admin else f"\n\nСтоимость: *{cost}* кредитов"
+        
         await query.edit_message_text(
-            f"{header}\n\n{INSTRUCTION_TEXT}\n\nСтоимость: *{cost}* кредитов",
+            f"{header}\n\n{INSTRUCTION_TEXT}{cost_text}",
             parse_mode="Markdown",
             reply_markup=cancel_keyboard(),
         )
