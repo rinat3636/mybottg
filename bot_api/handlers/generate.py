@@ -122,13 +122,8 @@ async def generate_start_callback(update: Update, context: ContextTypes.DEFAULT_
 
         cost = GENERATION_COST[TARIFF_KEY]
 
-        if not user.is_admin and user.balance < cost:
-            await query.edit_message_text(
-                f"💰 Недостаточно кредитов.\n\nНужно: {cost} кредитов\nВаш баланс: {user.balance} кредитов",
-                parse_mode="Markdown",
-                reply_markup=insufficient_funds_keyboard(),
-            )
-            return
+        # Admins don't need balance check - they get free generations
+        # Balance will be checked later in check_and_charge() for non-admins
 
         entry = query.data or "menu_generate"
         mode = "edit" if entry == "menu_edit" else "generate"
@@ -183,9 +178,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 return
 
             cost = GENERATION_COST[TARIFF_KEY]
-            if not user.is_admin and user.balance < cost:
-                await update.message.reply_text("💰 Недостаточно кредитов.", reply_markup=insufficient_funds_keyboard())
-                return
+            # Admins get free generations - balance checked in check_and_charge()
 
             await set_user_state(telegram_id, "waiting_for_generation")
             await update_user_data(telegram_id, tariff=TARIFF_KEY, cost=cost)
@@ -316,9 +309,7 @@ async def prompt_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 return
 
             cost = GENERATION_COST[TARIFF_KEY]
-            if not user.is_admin and user.balance < cost:
-                await update.message.reply_text("💰 Недостаточно кредитов.", reply_markup=insufficient_funds_keyboard())
-                return
+            # Admins get free generations - balance checked in check_and_charge()
 
             await set_user_state(telegram_id, "waiting_for_generation")
             await update_user_data(telegram_id, tariff=TARIFF_KEY, cost=cost)
