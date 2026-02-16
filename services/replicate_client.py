@@ -88,9 +88,13 @@ async def run_nano_banana(
     images = images or []
 
     def _build_inputs(include_aspect_ratio: bool) -> dict:
+        # Match official Replicate API example format
         inputs: dict = {
             "prompt": prompt,
+            "resolution": "2K",
+            "image_input": [],  # Always include, even if empty
             "output_format": "png",
+            "safety_filter_level": "block_only_high",
         }
         if images:
             # Convert bytes to data URI format for Replicate API
