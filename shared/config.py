@@ -35,6 +35,9 @@ CREDIT_PACKAGES: Dict[int, int] = {
 GENERATION_COST: Dict[str, int] = {
     "nano_banana_pro": 19,
     "riverflow_pro": 45,
+    "flux_2_pro": 9,
+    "kling_video_5s": 70,
+    "kling_video_10s": 140,
 }
 
 # ---------------------------------------------------------------------------

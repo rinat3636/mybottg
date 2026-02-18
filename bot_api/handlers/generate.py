@@ -135,7 +135,11 @@ async def generate_start_callback(update: Update, context: ContextTypes.DEFAULT_
             await query.edit_message_text(
                 "📸 *Выберите качество редактирования:*\n\n"
                 "⚡ *Nano Banana PRO* — 19 кредитов\n"
-                "Быстрое и недорогое редактирование.\n\n"
+                "Быстрое редактирование с поддержкой до 14 изображений.\n"
+                "Отлично рисует текст, работает с Google Search.\n\n"
+                "🎨 *Flux 2 Pro* — 9 кредитов\n"
+                "Профессиональное редактирование с фотореализмом.\n"
+                "Идеально для продуктовой фотографии и точного текста.\n\n"
                 "⭐ *Riverflow 2.0 PRO* — 45 кредитов\n"
                 "Максимальное качество и лучшее сохранение лица.",
                 parse_mode="Markdown",
@@ -179,6 +183,12 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
 
         state = await get_user_state(telegram_id)
+
+        # Video generation flow
+        if state == "waiting_for_video_image":
+            from bot_api.handlers.video_generation import video_photo_handler
+            await video_photo_handler(update, context)
+            return
 
         # If user is not in generation flow, start it implicitly
         if state not in ("waiting_for_generation",):
@@ -303,6 +313,12 @@ async def prompt_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if state == "waiting_for_support_message":
             from bot_api.handlers.support import support_message_handler
             await support_message_handler(update, context)
+            return
+
+        # Video generation flow
+        if state == "waiting_for_video_prompt":
+            from bot_api.handlers.video_generation import video_prompt_handler
+            await video_prompt_handler(update, context)
             return
 
         text = update.message.text.strip() if update.message.text else ""
@@ -705,6 +721,8 @@ async def edit_model_selection_callback(update: Update, context: ContextTypes.DE
             tariff = "nano_banana_pro"
         elif "riverflow_pro" in callback_data:
             tariff = "riverflow_pro"
+        elif "flux_2_pro" in callback_data:
+            tariff = "flux_2_pro"
         else:
             tariff = "nano_banana_pro"  # fallback
 
@@ -719,7 +737,14 @@ async def edit_model_selection_callback(update: Update, context: ContextTypes.DE
         is_admin = telegram_id in settings.ADMIN_IDS
         cost_text = "" if is_admin else f"\n\nСтоимость: *{cost}* кредитов"
 
-        model_name = "Nano Banana PRO" if tariff == "nano_banana_pro" else "Riverflow 2.0 PRO"
+        if tariff == "nano_banana_pro":
+            model_name = "Nano Banana PRO"
+        elif tariff == "riverflow_pro":
+            model_name = "Riverflow 2.0 PRO"
+        elif tariff == "flux_2_pro":
+            model_name = "Flux 2 Pro"
+        else:
+            model_name = "Nano Banana PRO"
 
         await query.edit_message_text(
             f"{EDIT_START_TEXT}\n\n"

@@ -28,7 +28,7 @@ from shared.redis_client import (
     TASK_STATUS_CANCELLED,
 )
 from shared.admin_guard import refund_if_needed
-from services.replicate_client import edit_image, generate_image, MODEL_NANO_BANANA, MODEL_RIVERFLOW
+from services.replicate_client import edit_image, generate_image, run_kling_video, MODEL_NANO_BANANA, MODEL_RIVERFLOW, MODEL_FLUX_2_PRO
 from services.generation_service import complete_generation
 from shared.errors import log_exception, generate_trace_id
 
@@ -92,6 +92,16 @@ async def _worker_loop() -> None:
 
 async def _process_task(task_id: str, payload: dict) -> None:
     """Process a single generation task."""
+    task_type = payload.get("task_type", "image")
+    
+    if task_type == "video":
+        await _process_video_task(task_id, payload)
+    else:
+        await _process_image_task(task_id, payload)
+
+
+async def _process_image_task(task_id: str, payload: dict) -> None:
+    """Process an image generation/editing task."""
     telegram_id = payload.get("telegram_id", 0)
     user_id = payload.get("user_id", 0)
     images_hex = payload.get("images_hex")
@@ -130,7 +140,12 @@ async def _process_task(task_id: str, payload: dict) -> None:
             return
 
         # Select model based on tariff
-        model = MODEL_RIVERFLOW if tariff == "riverflow_pro" else MODEL_NANO_BANANA
+        if tariff == "riverflow_pro":
+            model = MODEL_RIVERFLOW
+        elif tariff == "flux_2_pro":
+            model = MODEL_FLUX_2_PRO
+        else:
+            model = MODEL_NANO_BANANA
         
         if images:
             result_bytes = await asyncio.wait_for(
@@ -263,3 +278,114 @@ async def _send_result(chat_id: int, result_bytes: bytes) -> None:
         )
     except Exception as exc:
         logger.warning("Failed to send result to user %d: %s", chat_id, exc)
+
+
+async def _send_video_result(chat_id: int, video_bytes: bytes, duration: int) -> None:
+    """Send the generated video to the user."""
+    try:
+        from bot_api.bot import bot_app
+        from bot_api.keyboards import main_menu_keyboard
+
+        if not bot_app:
+            return
+
+        # Send video
+        video_bio = io.BytesIO(video_bytes)
+        video_bio.name = "video.mp4"
+        await bot_app.bot.send_video(
+            chat_id=chat_id,
+            video=video_bio,
+            caption=f"✅ Ваше видео готово! ({duration} сек)",
+            reply_markup=main_menu_keyboard(),
+        )
+    except Exception as exc:
+        logger.warning("Failed to send video to user %d: %s", chat_id, exc)
+
+
+async def _process_video_task(task_id: str, payload: dict) -> None:
+    """Process a video generation task."""
+    telegram_id = payload.get("telegram_id", 0)
+    user_id = payload.get("user_id", 0)
+    image_hex = payload.get("image_hex")
+    prompt = payload.get("prompt", "")
+    duration = payload.get("duration", 5)
+    generation_id = payload.get("generation_id", 0)
+    cost = payload.get("cost", 70)
+    tariff = payload.get("tariff", "kling_video_5s")
+    request_id = payload.get("request_id", task_id)
+    chat_id = payload.get("chat_id", telegram_id)
+    is_admin = payload.get("is_admin", False)
+
+    trace_id = generate_trace_id()
+
+    try:
+        # Decode image
+        if not image_hex:
+            raise ValueError("No image provided for video generation")
+        
+        image_bytes = bytes.fromhex(image_hex)
+
+        # Send "processing" notification
+        await _notify_user(chat_id, f"⏳ Генерирую видео ({duration} сек)... Это может занять несколько минут.")
+
+        # Check cancellation before calling Replicate
+        status = await get_task_status(task_id)
+        if status == TASK_STATUS_CANCELLED:
+            logger.info("Video task %s cancelled before Replicate call", task_id)
+            await complete_generation(generation_id, "cancelled")
+            await _handle_refund(payload, task_id)
+            await _notify_user(chat_id, "❌ Генерация отменена. Кредиты возвращены.")
+            return
+
+        # Generate video
+        result_bytes = await asyncio.wait_for(
+            run_kling_video(
+                prompt=prompt,
+                start_image=image_bytes,
+                duration=duration,
+                aspect_ratio="16:9",
+            ),
+            timeout=settings.GENERATION_TIMEOUT * 2,  # Video takes longer
+        )
+
+        # Check cancellation AFTER Replicate call
+        status = await get_task_status(task_id)
+        if status == TASK_STATUS_CANCELLED:
+            logger.info("Video task %s cancelled during processing, discarding result", task_id)
+            await complete_generation(generation_id, "cancelled")
+            await _handle_refund(payload, task_id)
+            await _notify_user(chat_id, "❌ Генерация отменена. Кредиты возвращены.")
+            return
+
+        if result_bytes:
+            await complete_generation(generation_id, "completed")
+            await set_task_status(task_id, TASK_STATUS_COMPLETED)
+
+            # Send video result
+            await _send_video_result(chat_id, result_bytes, duration)
+        else:
+            await complete_generation(generation_id, "failed")
+            await set_task_status(task_id, TASK_STATUS_FAILED)
+
+            # Refund
+            await refund_if_needed(user_id, is_admin, cost, request_id, tariff)
+
+            await _notify_user(
+                chat_id,
+                "❌ Не удалось сгенерировать видео. Кредиты возвращены.\n"
+                "Попробуйте другой промт или фото.",
+            )
+
+    except Exception as exc:
+        log_exception(exc, trace_id=trace_id, context=f"process_video_task:{task_id}")
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        try:
+            await complete_generation(generation_id, "failed")
+        except Exception:
+            pass
+        await _handle_refund(payload, task_id)
+        await _notify_user(chat_id, "Произошла ошибка, попробуйте позже.")
+        logger.error("Video task %s failed with trace_id=%s", task_id, trace_id)
+
+    finally:
+        await release_generation_lock(telegram_id)

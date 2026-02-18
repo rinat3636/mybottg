@@ -47,6 +47,12 @@ async def create_bot() -> Application:
         gen_new_callback,
         edit_model_selection_callback,
     )
+    from bot_api.handlers.video_generation import (
+        video_start_callback,
+        video_photo_handler,
+        video_prompt_handler,
+        video_duration_callback,
+    )
     from bot_api.handlers.cancel import cancel_command, cancel_callback
     from bot_api.handlers.topup import topup_callback
     from bot_api.handlers.payment_check import check_payment_callback
@@ -97,6 +103,8 @@ async def create_bot() -> Application:
     app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^back_to_menu$"))
     app.add_handler(CallbackQueryHandler(generate_start_callback, pattern=r"^menu_generate$"))
     app.add_handler(CallbackQueryHandler(generate_start_callback, pattern=r"^menu_edit$"))
+    app.add_handler(CallbackQueryHandler(video_start_callback, pattern=r"^menu_video$"))
+    app.add_handler(CallbackQueryHandler(video_duration_callback, pattern=r"^video_duration_"))
     app.add_handler(CallbackQueryHandler(examples_menu_callback, pattern=r"^menu_examples$"))
     app.add_handler(CallbackQueryHandler(example_pick_callback, pattern=r"^ex_[a-z]+$"))
     app.add_handler(CallbackQueryHandler(example_use_callback, pattern=r"^ex_use_[a-z]+$"))

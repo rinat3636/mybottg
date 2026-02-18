@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 MODEL_NANO_BANANA = "google/nano-banana-pro"
 MODEL_RIVERFLOW = "sourceful/riverflow-2.0-pro"
+MODEL_FLUX_2_PRO = "black-forest-labs/flux-2-pro"
+MODEL_KLING_VIDEO = "kwaivgi/kling-v2.5-turbo-pro"
 
 _MAX_WAIT_TIME = 600  # 10 minutes max wait for prediction
 _POLL_INTERVAL = 2  # Check status every 2 seconds
@@ -355,6 +357,8 @@ async def run_riverflow(
 async def edit_image(images: list[bytes], prompt: str, aspect_ratio: Optional[str] = None, model: str = MODEL_NANO_BANANA) -> Optional[bytes]:
     if model == MODEL_RIVERFLOW:
         return await run_riverflow(instruction=prompt, images=images, aspect_ratio=aspect_ratio)
+    elif model == MODEL_FLUX_2_PRO:
+        return await run_flux_2_pro(prompt=prompt, input_images=images, aspect_ratio=aspect_ratio)
     else:
         return await run_nano_banana(prompt=prompt, images=images, aspect_ratio=aspect_ratio, model=model)
 
@@ -362,5 +366,187 @@ async def edit_image(images: list[bytes], prompt: str, aspect_ratio: Optional[st
 async def generate_image(prompt: str, aspect_ratio: Optional[str] = None, model: str = MODEL_NANO_BANANA) -> Optional[bytes]:
     if model == MODEL_RIVERFLOW:
         return await run_riverflow(instruction=prompt, images=[], aspect_ratio=aspect_ratio)
+    elif model == MODEL_FLUX_2_PRO:
+        return await run_flux_2_pro(prompt=prompt, input_images=[], aspect_ratio=aspect_ratio)
     else:
         return await run_nano_banana(prompt=prompt, images=[], aspect_ratio=aspect_ratio, model=model)
+
+
+async def run_flux_2_pro(
+    *,
+    prompt: str,
+    input_images: Optional[list[bytes]] = None,
+    aspect_ratio: Optional[str] = None,
+    resolution: str = "1 MP",
+) -> Optional[bytes]:
+    """Run Flux 2 Pro for image generation or editing.
+    
+    Flux 2 Pro excels at:
+    - Text rendering in images
+    - Photorealistic details
+    - Character consistency across multiple references
+    - Image editing with natural language instructions
+    
+    Supports up to 8 input images.
+    """
+    _ensure_token()
+
+    last_exc: Optional[Exception] = None
+    input_images = input_images or []
+
+    def _build_inputs() -> dict:
+        inputs: dict = {
+            "prompt": prompt,
+            "resolution": resolution,
+            "output_format": "webp",
+            "safety_tolerance": 2,
+        }
+        
+        if input_images:
+            # Convert bytes to data URI format
+            data_uris = []
+            for img_bytes in input_images[:8]:  # Max 8 images
+                b64 = base64.b64encode(img_bytes).decode('utf-8')
+                data_uri = f"data:image/png;base64,{b64}"
+                data_uris.append(data_uri)
+            inputs["input_images"] = data_uris
+            # Match input image aspect ratio when editing
+            inputs["aspect_ratio"] = aspect_ratio or "match_input_image"
+        else:
+            # For generation, use specified aspect ratio or default
+            inputs["aspect_ratio"] = aspect_ratio or "1:1"
+        
+        return inputs
+
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            logger.info("Creating Flux 2 Pro prediction (attempt %d/%d)", attempt, _MAX_RETRIES)
+            
+            prediction = await asyncio.to_thread(
+                replicate.predictions.create,
+                model=MODEL_FLUX_2_PRO,
+                input=_build_inputs()
+            )
+            
+            prediction_id = prediction.id
+            logger.info("Flux 2 Pro prediction created: %s", prediction_id)
+            
+            # Wait for completion
+            output = await _wait_for_prediction(prediction_id)
+            
+            # Extract URL
+            url = _pick_first_url(output)
+            if not url:
+                logger.warning("Flux 2 Pro returned no URL (attempt %d): %r", attempt, output)
+                return None
+
+            # Download result
+            logger.info("Downloading Flux 2 Pro result from %s", url)
+            data = await _download_bytes(url)
+            if data:
+                logger.info("Successfully downloaded Flux 2 Pro result (%d bytes)", len(data))
+                return data
+            else:
+                logger.warning("Failed to download Flux 2 Pro result from %s", url)
+                return None
+
+        except asyncio.TimeoutError:
+            last_exc = asyncio.TimeoutError()
+            logger.warning("Flux 2 Pro request timed out (attempt %d/%d)", attempt, _MAX_RETRIES)
+            
+        except Exception as exc:
+            last_exc = exc
+            wait = _RETRY_BACKOFF * attempt
+            logger.warning("Flux 2 Pro error (attempt %d/%d), waiting %ds: %s", attempt, _MAX_RETRIES, wait, exc)
+            await asyncio.sleep(wait)
+
+    logger.error("Flux 2 Pro failed after %d attempts: %s", _MAX_RETRIES, last_exc)
+    return None
+
+
+async def run_kling_video(
+    *,
+    prompt: str,
+    start_image: bytes,
+    duration: int = 5,
+    aspect_ratio: str = "16:9",
+) -> Optional[bytes]:
+    """Generate video from image using Kling v2.5 Turbo Pro.
+    
+    Kling v2.5 Turbo Pro features:
+    - Cinematic video with fluid motion
+    - Precise prompt understanding for multi-step actions
+    - Realistic dynamics even at high speeds
+    - Style and color consistency from input image
+    
+    Args:
+        prompt: Text description of the action/motion
+        start_image: Input image bytes (first frame)
+        duration: Video duration in seconds (5 or 10)
+        aspect_ratio: Video aspect ratio (16:9, 9:16, 1:1)
+    
+    Returns:
+        Video file bytes (MP4) or None on failure
+    """
+    _ensure_token()
+
+    last_exc: Optional[Exception] = None
+
+    def _build_inputs() -> dict:
+        # Convert image to data URI
+        b64 = base64.b64encode(start_image).decode('utf-8')
+        data_uri = f"data:image/png;base64,{b64}"
+        
+        inputs = {
+            "prompt": prompt,
+            "start_image": data_uri,
+            "duration": duration,
+            "aspect_ratio": aspect_ratio,
+            "negative_prompt": "",
+        }
+        return inputs
+
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            logger.info("Creating Kling video prediction (attempt %d/%d, duration=%ds)", attempt, _MAX_RETRIES, duration)
+            
+            prediction = await asyncio.to_thread(
+                replicate.predictions.create,
+                model=MODEL_KLING_VIDEO,
+                input=_build_inputs()
+            )
+            
+            prediction_id = prediction.id
+            logger.info("Kling video prediction created: %s", prediction_id)
+            
+            # Wait for completion (video generation takes longer)
+            output = await _wait_for_prediction(prediction_id)
+            
+            # Extract video URL
+            url = _pick_first_url(output)
+            if not url:
+                logger.warning("Kling video returned no URL (attempt %d): %r", attempt, output)
+                return None
+
+            # Download video
+            logger.info("Downloading Kling video from %s", url)
+            data = await _download_bytes(url)
+            if data:
+                logger.info("Successfully downloaded Kling video (%d bytes)", len(data))
+                return data
+            else:
+                logger.warning("Failed to download Kling video from %s", url)
+                return None
+
+        except asyncio.TimeoutError:
+            last_exc = asyncio.TimeoutError()
+            logger.warning("Kling video request timed out (attempt %d/%d)", attempt, _MAX_RETRIES)
+            
+        except Exception as exc:
+            last_exc = exc
+            wait = _RETRY_BACKOFF * attempt
+            logger.warning("Kling video error (attempt %d/%d), waiting %ds: %s", attempt, _MAX_RETRIES, wait, exc)
+            await asyncio.sleep(wait)
+
+    logger.error("Kling video failed after %d attempts: %s", _MAX_RETRIES, last_exc)
+    return None

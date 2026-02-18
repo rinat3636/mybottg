@@ -20,6 +20,9 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("🪄 Сгенерировать", callback_data="menu_generate"),
             ],
             [
+                InlineKeyboardButton("🎬 Видео из изображения", callback_data="menu_video"),
+            ],
+            [
                 InlineKeyboardButton("💎 Баланс", callback_data="menu_balance"),
                 InlineKeyboardButton("💰 Пополнить", callback_data="menu_topup"),
             ],
@@ -106,6 +109,12 @@ def edit_quality_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    "🎨 Flux 2 Pro — 9 кредитов",
+                    callback_data="edit_model_flux_2_pro",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     "⭐ Riverflow 2.0 PRO — 45 кредитов",
                     callback_data="edit_model_riverflow_pro",
                 ),
@@ -174,4 +183,29 @@ def admin_user_keyboard(telegram_id: int, is_banned: bool) -> InlineKeyboardMark
     label = "🔓 Разбанить" if is_banned else "🔒 Забанить"
     return InlineKeyboardMarkup(
         [[InlineKeyboardButton(label, callback_data=f"admin_{action}_{telegram_id}")]]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Video duration selection
+# ---------------------------------------------------------------------------
+
+def video_duration_keyboard() -> InlineKeyboardMarkup:
+    """Duration selection for video generation."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "⚡ 5 секунд — 70 кредитов",
+                    callback_data="video_duration_5",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "⭐ 10 секунд — 140 кредитов",
+                    callback_data="video_duration_10",
+                ),
+            ],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_menu")],
+        ]
     )
