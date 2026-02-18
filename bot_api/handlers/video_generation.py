@@ -244,11 +244,11 @@ async def video_duration_callback(update: Update, context: ContextTypes.DEFAULT_
         # Check and charge credits
         is_admin = telegram_id in context.application.bot_data.get("admin_ids", [])
         
-        if not is_admin and user.credits < cost:
+        if not is_admin and user.balance < cost:
             await query.edit_message_text(
                 f"❌ Недостаточно кредитов.\n\n"
                 f"Требуется: *{cost}* кредитов\n"
-                f"У вас: *{user.credits}* кредитов",
+                f"У вас: *{user.balance}* кредитов",
                 parse_mode="Markdown",
                 reply_markup=insufficient_funds_keyboard(),
             )
