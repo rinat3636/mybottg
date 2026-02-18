@@ -21,7 +21,7 @@ from bot_api.keyboards import (
 from services.generation_service import new_request_id, create_generation
 from services.user_service import get_user_by_telegram_id
 from shared.admin_guard import check_and_charge, refund_if_needed
-from shared.config import GENERATION_COST, DEFAULT_CMD_RATE_LIMIT, DEFAULT_MEDIA_RATE_LIMIT
+from shared.config import GENERATION_COST, DEFAULT_CMD_RATE_LIMIT, DEFAULT_MEDIA_RATE_LIMIT, settings
 from shared.redis_client import (
     QueueLimitError,
     check_rate_limit,
@@ -241,8 +241,8 @@ async def video_duration_callback(update: Update, context: ContextTypes.DEFAULT_
             )
             return
 
-        # Check and charge credits
-        is_admin = telegram_id in context.application.bot_data.get("admin_ids", [])
+        # Check balance for non-admins only
+        is_admin = user.is_admin or telegram_id in settings.ADMIN_IDS
         
         if not is_admin and user.balance < cost:
             await query.edit_message_text(
@@ -287,7 +287,7 @@ async def _process_video_generation(
             await query.edit_message_text("❌ Пользователь не найден.")
             return
 
-        is_admin = telegram_id in context.application.bot_data.get("admin_ids", [])
+        is_admin = user.is_admin or telegram_id in settings.ADMIN_IDS
 
         # Acquire lock
         lock_acquired = await acquire_generation_lock(telegram_id)
