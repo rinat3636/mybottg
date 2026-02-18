@@ -217,10 +217,10 @@ async def video_duration_callback(update: Update, context: ContextTypes.DEFAULT_
 
         # Determine duration from callback
         callback_data = query.data or ""
-        if "duration_5" in callback_data:
+        if callback_data == "video_duration_5":
             duration = 5
             tariff = "kling_video_5s"
-        elif "duration_10" in callback_data:
+        elif callback_data == "video_duration_10":
             duration = 10
             tariff = "kling_video_10s"
         else:
