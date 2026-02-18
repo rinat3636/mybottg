@@ -296,7 +296,7 @@ async def _process_video_generation(
         )
 
         # Check and charge
-        charged = await check_and_charge(user.id, is_admin, cost, request_id, tariff)
+        charged = await check_and_charge(user.id, is_admin, cost, tariff, request_id)
         if not charged:
             await query.edit_message_text(
                 f"❌ Недостаточно кредитов.\n\n"
