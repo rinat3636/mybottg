@@ -241,20 +241,7 @@ async def video_duration_callback(update: Update, context: ContextTypes.DEFAULT_
             )
             return
 
-        # Check balance for non-admins only
-        is_admin = user.is_admin or telegram_id in settings.ADMIN_IDS
-        
-        if not is_admin and user.balance < cost:
-            await query.edit_message_text(
-                f"❌ Недостаточно кредитов.\n\n"
-                f"Требуется: *{cost}* кредитов\n"
-                f"У вас: *{user.balance}* кредитов",
-                parse_mode="Markdown",
-                reply_markup=insufficient_funds_keyboard(),
-            )
-            return
-
-        # Process video generation
+        # Process video generation (balance check happens inside via check_and_charge)
         await _process_video_generation(
             update, context, video_image_file_id, video_prompt, duration, tariff, cost, trace_id
         )
