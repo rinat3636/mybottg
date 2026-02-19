@@ -107,11 +107,17 @@ async def video_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     try:
         telegram_id = update.effective_user.id
+        
+        # Get user to check admin status
+        user = await get_user_by_telegram_id(telegram_id)
+        is_admin = user and (user.is_admin or telegram_id in settings.ADMIN_IDS)
 
-        allowed = await check_rate_limit(telegram_id, "media", DEFAULT_MEDIA_RATE_LIMIT, 60)
-        if not allowed:
-            await update.message.reply_text("⏳ Подождите немного, вы отправляете слишком много запросов.")
-            return
+        # Skip rate limit for admins
+        if not is_admin:
+            allowed = await check_rate_limit(telegram_id, "media", DEFAULT_MEDIA_RATE_LIMIT, 60)
+            if not allowed:
+                await update.message.reply_text("⏳ Подождите немного, вы отправляете слишком много запросов.")
+                return
 
         state = await get_user_state(telegram_id)
 
@@ -149,11 +155,17 @@ async def video_prompt_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         telegram_id = update.effective_user.id
+        
+        # Get user to check admin status
+        user = await get_user_by_telegram_id(telegram_id)
+        is_admin = user and (user.is_admin or telegram_id in settings.ADMIN_IDS)
 
-        allowed = await check_rate_limit(telegram_id, "cmd", DEFAULT_CMD_RATE_LIMIT, 60)
-        if not allowed:
-            await update.message.reply_text("⏳ Подождите немного, вы отправляете слишком много запросов.")
-            return
+        # Skip rate limit for admins
+        if not is_admin:
+            allowed = await check_rate_limit(telegram_id, "cmd", DEFAULT_CMD_RATE_LIMIT, 60)
+            if not allowed:
+                await update.message.reply_text("⏳ Подождите немного, вы отправляете слишком много запросов.")
+                return
 
         state = await get_user_state(telegram_id)
 
