@@ -14,8 +14,8 @@ from services.ledger_service import record_credit_change
 
 logger = logging.getLogger(__name__)
 
-WELCOME_CREDITS = 11
-REFERRAL_CREDITS = 11
+WELCOME_CREDITS = 24
+REFERRAL_CREDITS = 24
 
 
 async def get_or_create_user(

@@ -103,19 +103,19 @@ def edit_quality_keyboard() -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton(
-                    "🔥 Nano Banana Pro — 11 кредитов",
+                    "🔥 Nano Banana Pro — 30 кредитов",
                     callback_data="edit_model_nano_banana_pro",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "✨ Flux 2 Pro — 9 кредитов",
+                    "✨ Flux 2 Pro — 24 кредита",
                     callback_data="edit_model_flux_2_pro",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "💎 Riverflow 2.0 PRO — 45 кредитов",
+                    "💎 Riverflow 2.0 PRO — 32 кредита",
                     callback_data="edit_model_riverflow_pro",
                 ),
             ],
