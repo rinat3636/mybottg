@@ -1,0 +1,89 @@
+{
+  "_meta": {
+    "description": "LivePortrait workflow optimized for RTX A5000 (20GB VRAM)",
+    "author": "Manus AI",
+    "version": "1.0",
+    "notes": "Optimized for 512x512 resolution, 15 seconds max, 25 fps. Adjust resolution and duration based on VRAM availability.",
+    "requirements": [
+      "ComfyUI-LivePortraitKJ custom node",
+      "LivePortrait models in models/liveportrait/",
+      "InsightFace models for face detection"
+    ]
+  },
+  "1": {
+    "inputs": {
+      "image": "input_image.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Input Image"
+    }
+  },
+  "2": {
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "interpolation": "lanczos",
+      "method": "keep proportion",
+      "condition": "always",
+      "multiple_of": 8,
+      "image": ["1", 0]
+    },
+    "class_type": "ImageResize+",
+    "_meta": {
+      "title": "Resize to 512x512"
+    }
+  },
+  "3": {
+    "inputs": {
+      "provider": "CPU",
+      "image": ["2", 0]
+    },
+    "class_type": "LivePortraitLoadFace",
+    "_meta": {
+      "title": "Detect Face"
+    }
+  },
+  "4": {
+    "inputs": {
+      "motion_preset": "natural_blink",
+      "motion_strength": 0.7,
+      "head_rotation_x": 0.0,
+      "head_rotation_y": 0.0,
+      "head_rotation_z": 0.0,
+      "eye_blink_strength": 0.8,
+      "lip_movement": 0.3,
+      "expression_strength": 0.5
+    },
+    "class_type": "LivePortraitMotionConfig",
+    "_meta": {
+      "title": "Motion Configuration"
+    }
+  },
+  "5": {
+    "inputs": {
+      "frames": 375,
+      "fps": 25,
+      "face_data": ["3", 0],
+      "motion_config": ["4", 0]
+    },
+    "class_type": "LivePortraitAnimate",
+    "_meta": {
+      "title": "Animate (15 seconds @ 25fps)"
+    }
+  },
+  "6": {
+    "inputs": {
+      "filename_prefix": "LivePortrait",
+      "fps": 25,
+      "quality": 90,
+      "method": "h264-mp4",
+      "images": ["5", 0]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Combine to Video"
+    }
+  }
+}

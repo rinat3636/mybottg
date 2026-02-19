@@ -65,6 +65,9 @@ DEFAULT_GENERATION_LOCK_TTL: int = 300
 # Overall generation timeout in the worker (seconds)
 DEFAULT_GENERATION_TIMEOUT: int = 200
 
+# ComfyUI polling interval (seconds)
+DEFAULT_COMFYUI_POLL_INTERVAL: int = 3
+
 
 @dataclass(frozen=True)
 class Config:
@@ -75,8 +78,11 @@ class Config:
     TELEGRAM_WEBHOOK_URL: str = ""
     TELEGRAM_WEBHOOK_SECRET: str = ""
 
-    # Replicate
-    REPLICATE_API_TOKEN: str = ""
+    # ComfyUI (replaces Replicate)
+    COMFYUI_API_URL: str = ""
+    COMFYUI_API_PORT: int = 8188
+    COMFYUI_API_KEY: str = ""  # Optional authentication token
+    COMFYUI_POLL_INTERVAL: int = DEFAULT_COMFYUI_POLL_INTERVAL
 
     # Database
     DATABASE_URL: str = ""
@@ -151,12 +157,14 @@ _REQUIRED_VARS: List[Tuple[str, str]] = [
     ("TELEGRAM_BOT_TOKEN", "Telegram bot token from @BotFather"),
     ("DATABASE_URL", "PostgreSQL connection string (DATABASE_URL / POSTGRES_URL / POSTGRESQL_URL)"),
     ("REDIS_URL", "Redis connection string (REDIS_URL / REDIS_PRIVATE_URL / REDIS_PUBLIC_URL)"),
+    ("COMFYUI_API_URL", "ComfyUI API URL (e.g., https://your-pod-id-8188.proxy.runpod.net)"),
 ]
 
 _OPTIONAL_VARS: List[Tuple[str, str]] = [
     ("YOOKASSA_SHOP_ID", "YooKassa shop ID — payments will not work without it"),
     ("YOOKASSA_SECRET_KEY", "YooKassa secret key — payments will not work without it"),
     ("TELEGRAM_WEBHOOK_URL", "Public base URL for webhooks — webhook setup will be skipped"),
+    ("COMFYUI_API_KEY", "ComfyUI API authentication token — only needed if auth is enabled"),
 ]
 
 
@@ -169,7 +177,7 @@ def _env_first(*names: str, default: str = "") -> str:
     return default
 
 
-def _check_env(database_url: str, redis_url: str, webhook_url: str, webhook_secret: str) -> None:
+def _check_env(database_url: str, redis_url: str, webhook_url: str, webhook_secret: str, comfyui_url: str) -> None:
     """Validate required ENV vars, warn about optional ones."""
     missing: List[str] = []
 
@@ -182,8 +190,8 @@ def _check_env(database_url: str, redis_url: str, webhook_url: str, webhook_secr
     if not redis_url:
         missing.append("  • REDIS_URL — Redis connection string (or REDIS_PRIVATE_URL / REDIS_PUBLIC_URL)")
 
-    if not os.getenv("REPLICATE_API_TOKEN", "").strip():
-        missing.append("  • REPLICATE_API_TOKEN — Replicate API token (required for image generation)")
+    if not comfyui_url:
+        missing.append("  • COMFYUI_API_URL — ComfyUI API URL (e.g., https://your-pod-id-8188.proxy.runpod.net)")
 
     # If webhook is enabled (URL provided), secret MUST be set and must not be a default.
     if webhook_url and (not webhook_secret or webhook_secret == "changeme"):
@@ -217,8 +225,11 @@ def load_config(*, validate: bool = True) -> Config:
 
     webhook_url = os.getenv("TELEGRAM_WEBHOOK_URL", "").strip()
     webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip() or "changeme"
+    
+    comfyui_url = os.getenv("COMFYUI_API_URL", "").strip()
+    
     if validate:
-        _check_env(database_url, redis_url, webhook_url, webhook_secret)
+        _check_env(database_url, redis_url, webhook_url, webhook_secret, comfyui_url)
 
     admin_ids_raw = os.getenv("ADMIN_IDS", "")
     admin_ids: List[int] = []
@@ -235,7 +246,10 @@ def load_config(*, validate: bool = True) -> Config:
         TELEGRAM_BOT_TOKEN=os.getenv("TELEGRAM_BOT_TOKEN", "").strip(),
         TELEGRAM_WEBHOOK_URL=webhook_url,
         TELEGRAM_WEBHOOK_SECRET=webhook_secret,
-        REPLICATE_API_TOKEN=os.getenv("REPLICATE_API_TOKEN", "").strip(),
+        COMFYUI_API_URL=comfyui_url,
+        COMFYUI_API_PORT=int(os.getenv("COMFYUI_API_PORT", "8188")),
+        COMFYUI_API_KEY=os.getenv("COMFYUI_API_KEY", "").strip(),
+        COMFYUI_POLL_INTERVAL=int(os.getenv("COMFYUI_POLL_INTERVAL", str(DEFAULT_COMFYUI_POLL_INTERVAL))),
         DATABASE_URL=database_url,
         DB_POOL_SIZE=int(os.getenv("DB_POOL_SIZE", "3")),
         DB_MAX_OVERFLOW=int(os.getenv("DB_MAX_OVERFLOW", "2")),
@@ -263,4 +277,10 @@ def validate_settings() -> None:
 
     Call this once from the FastAPI lifespan before initializing external services.
     """
-    _check_env(settings.DATABASE_URL, settings.REDIS_URL, settings.TELEGRAM_WEBHOOK_URL, settings.TELEGRAM_WEBHOOK_SECRET)
+    _check_env(
+        settings.DATABASE_URL,
+        settings.REDIS_URL,
+        settings.TELEGRAM_WEBHOOK_URL,
+        settings.TELEGRAM_WEBHOOK_SECRET,
+        settings.COMFYUI_API_URL,
+    )

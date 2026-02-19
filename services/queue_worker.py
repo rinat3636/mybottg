@@ -27,8 +27,22 @@ from shared.redis_client import (
     TASK_STATUS_FAILED,
     TASK_STATUS_CANCELLED,
 )
+from shared.redis_client_gpu import (
+    acquire_gpu_slot,
+    release_gpu_slot,
+    get_active_gpu_jobs,
+    MAX_GPU_JOBS,
+)
 from shared.admin_guard import refund_if_needed
-from services.replicate_client import edit_image, generate_image, run_kling_video, MODEL_NANO_BANANA, MODEL_RIVERFLOW, MODEL_FLUX_2_PRO
+from services.comfy_client import (
+    generate_image,
+    generate_video,
+    edit_image,
+    ComfyUINoFaceError,
+    ComfyUITimeoutError,
+    ComfyUIConnectionError,
+    ComfyUIGenerationError,
+)
 from services.generation_service import complete_generation
 from shared.errors import log_exception, generate_trace_id
 
@@ -80,8 +94,35 @@ async def _worker_loop() -> None:
                 await release_generation_lock(telegram_id)
                 continue
 
-            await set_task_status(task_id, TASK_STATUS_PROCESSING)
-            await _process_task(task_id, payload)
+            # Try to acquire GPU slot
+            gpu_acquired = await acquire_gpu_slot(task_id)
+            if not gpu_acquired:
+                # GPU is at capacity, put task back in queue
+                active_jobs = await get_active_gpu_jobs()
+                logger.info(
+                    "GPU at capacity (%d/%d jobs), task %s waiting",
+                    active_jobs, MAX_GPU_JOBS, task_id
+                )
+                
+                # Notify user that they're in queue
+                telegram_id = payload.get("telegram_id", 0)
+                chat_id = payload.get("chat_id", telegram_id)
+                await _notify_user(
+                    chat_id,
+                    f"⏳ Сервер загружен ({active_jobs}/{MAX_GPU_JOBS} задач). "
+                    f"Ваша генерация начнется через несколько секунд..."
+                )
+                
+                # Wait a bit and try again
+                await asyncio.sleep(5)
+                continue
+
+            try:
+                await set_task_status(task_id, TASK_STATUS_PROCESSING)
+                await _process_task(task_id, payload)
+            finally:
+                # Always release GPU slot when done
+                await release_gpu_slot(task_id)
 
         except asyncio.CancelledError:
             break
@@ -130,38 +171,32 @@ async def _process_image_task(task_id: str, payload: dict) -> None:
         # Send "processing" notification
         await _notify_user(chat_id, "⏳ Обрабатываю изображение... Это может занять несколько секунд.")
 
-        # --- Check cancellation before calling Replicate ---
+        # --- Check cancellation before calling ComfyUI ---
         status = await get_task_status(task_id)
         if status == TASK_STATUS_CANCELLED:
-            logger.info("Task %s cancelled before Replicate call", task_id)
+            logger.info("Task %s cancelled before ComfyUI call", task_id)
             await complete_generation(generation_id, "cancelled")
             await _handle_refund(payload, task_id)
             await _notify_user(chat_id, "❌ Генерация отменена. Кредиты возвращены.")
             return
 
-        # Select model based on tariff
-        if tariff == "riverflow_pro":
-            model = MODEL_RIVERFLOW
-        elif tariff == "flux_2_pro":
-            model = MODEL_FLUX_2_PRO
-        else:
-            model = MODEL_NANO_BANANA
-        
+        # All tariffs now use the same SDXL model via ComfyUI
+        # The difference is only in cost/credits
         if images:
             result_bytes = await asyncio.wait_for(
-                edit_image(images, prompt, aspect_ratio=aspect_ratio, model=model),
+                edit_image(images, prompt, aspect_ratio=aspect_ratio),
                 timeout=settings.GENERATION_TIMEOUT,
             )
         else:
             result_bytes = await asyncio.wait_for(
-                generate_image(prompt, aspect_ratio=aspect_ratio, model=model),
+                generate_image(prompt, aspect_ratio=aspect_ratio),
                 timeout=settings.GENERATION_TIMEOUT,
             )
 
-        # --- Check cancellation AFTER Replicate call ---
+        # --- Check cancellation AFTER ComfyUI call ---
         status = await get_task_status(task_id)
         if status == TASK_STATUS_CANCELLED:
-            logger.info("Task %s cancelled during Replicate processing, discarding result", task_id)
+            logger.info("Task %s cancelled during ComfyUI processing, discarding result", task_id)
             await complete_generation(generation_id, "cancelled")
             await _handle_refund(payload, task_id)
             await _notify_user(chat_id, "❌ Генерация отменена. Кредиты возвращены.")
@@ -199,6 +234,28 @@ async def _process_image_task(task_id: str, payload: dict) -> None:
                 "❌ Не удалось обработать изображение. Кредиты возвращены.\n"
                 "Попробуйте другой промт или фото.",
             )
+
+    except ComfyUIConnectionError as exc:
+        logger.error("ComfyUI connection error for task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await complete_generation(generation_id, "failed")
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ Сервер генерации недоступен. Кредиты возвращены.\n"
+            "Попробуйте позже."
+        )
+
+    except ComfyUITimeoutError as exc:
+        logger.error("ComfyUI timeout for task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await complete_generation(generation_id, "failed")
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ Генерация заняла слишком много времени. Кредиты возвращены.\n"
+            "Попробуйте упростить промт."
+        )
 
     except Exception as exc:
         log_exception(exc, trace_id=trace_id, context=f"process_task:{task_id}")
@@ -303,7 +360,7 @@ async def _send_video_result(chat_id: int, video_bytes: bytes, duration: int) ->
 
 
 async def _process_video_task(task_id: str, payload: dict) -> None:
-    """Process a video generation task."""
+    """Process a video generation task using LivePortrait."""
     telegram_id = payload.get("telegram_id", 0)
     user_id = payload.get("user_id", 0)
     image_hex = payload.get("image_hex")
@@ -328,27 +385,26 @@ async def _process_video_task(task_id: str, payload: dict) -> None:
         # Send "processing" notification
         await _notify_user(chat_id, f"⏳ Генерирую видео ({duration} сек)... Это может занять несколько минут.")
 
-        # Check cancellation before calling Replicate
+        # Check cancellation before calling ComfyUI
         status = await get_task_status(task_id)
         if status == TASK_STATUS_CANCELLED:
-            logger.info("Video task %s cancelled before Replicate call", task_id)
+            logger.info("Video task %s cancelled before ComfyUI call", task_id)
             await complete_generation(generation_id, "cancelled")
             await _handle_refund(payload, task_id)
             await _notify_user(chat_id, "❌ Генерация отменена. Кредиты возвращены.")
             return
 
-        # Generate video
+        # Generate video using LivePortrait
         result_bytes = await asyncio.wait_for(
-            run_kling_video(
+            generate_video(
+                image_bytes=image_bytes,
                 prompt=prompt,
-                start_image=image_bytes,
-                duration=duration,
-                aspect_ratio="16:9",
+                duration_seconds=duration,
             ),
             timeout=settings.GENERATION_TIMEOUT * 2,  # Video takes longer
         )
 
-        # Check cancellation AFTER Replicate call
+        # Check cancellation AFTER ComfyUI call
         status = await get_task_status(task_id)
         if status == TASK_STATUS_CANCELLED:
             logger.info("Video task %s cancelled during processing, discarding result", task_id)
@@ -375,6 +431,39 @@ async def _process_video_task(task_id: str, payload: dict) -> None:
                 "❌ Не удалось сгенерировать видео. Кредиты возвращены.\n"
                 "Попробуйте другой промт или фото.",
             )
+
+    except ComfyUINoFaceError as exc:
+        logger.warning("No face detected in video task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await complete_generation(generation_id, "failed")
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ На фото не обнаружено лицо. Кредиты возвращены.\n"
+            "Загрузите фото с четким изображением лица."
+        )
+
+    except ComfyUIConnectionError as exc:
+        logger.error("ComfyUI connection error for video task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await complete_generation(generation_id, "failed")
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ Сервер генерации недоступен. Кредиты возвращены.\n"
+            "Попробуйте позже."
+        )
+
+    except ComfyUITimeoutError as exc:
+        logger.error("ComfyUI timeout for video task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await complete_generation(generation_id, "failed")
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ Генерация видео заняла слишком много времени. Кредиты возвращены.\n"
+            "Попробуйте позже."
+        )
 
     except Exception as exc:
         log_exception(exc, trace_id=trace_id, context=f"process_video_task:{task_id}")

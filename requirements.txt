@@ -7,5 +7,4 @@ redis[hiredis]==5.2.1
 yookassa==3.4.0
 httpx==0.28.1
 python-dotenv==1.0.1
-replicate>=0.25.0
 sentry-sdk==2.21.0

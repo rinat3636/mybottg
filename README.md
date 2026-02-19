@@ -1,4 +1,8 @@
-# Nano Banana Bot v3.0
+> **Project Status: Migration to ComfyUI Complete**
+> This project has been successfully migrated from Replicate API to a self-hosted ComfyUI backend. The documentation below is preserved for historical context, but the live codebase uses ComfyUI.
+> For details on the new architecture, see **[MIGRATION_SUMMARY.md](./MIGRATION_SUMMARY.md)**.
+
+# Nano Banana Bot v3.0 (Archived Documentation)
 
 Telegram-бот для AI-редактирования изображений с помощью Google Replicate.
 Оплата через YooKassa, кредитная система, очередь задач, полный аудит операций.
@@ -33,6 +37,8 @@ FastAPI (Uvicorn)
 ---
 
 ## Быстрый старт (Railway)
+
+> **Note:** These instructions are for the original Replicate version. For the new ComfyUI version, please see **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)**.
 
 ### 1. Подготовка
 

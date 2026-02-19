@@ -1,0 +1,77 @@
+{
+  "1": {
+    "inputs": {
+      "image": "input_image.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "2": {
+    "inputs": {
+      "mode": "animal",
+      "flag_lip_zero": false,
+      "flag_eye_retargeting": true,
+      "flag_lip_retargeting": true,
+      "flag_stitching": true,
+      "flag_relative": true,
+      "flag_pasteback": true,
+      "flag_do_crop": true,
+      "dsize": 512,
+      "scale": 2.3,
+      "vx_ratio": 0,
+      "vy_ratio": -0.125,
+      "scale_crop_video": 2.2,
+      "vy_ratio_crop_video": -0.1,
+      "source_image": [
+        "1",
+        0
+      ],
+      "driving_images": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "LivePortraitProcess",
+    "_meta": {
+      "title": "LivePortrait Process"
+    }
+  },
+  "3": {
+    "inputs": {
+      "expression_friendly": 3.0,
+      "max_speed": 15.0,
+      "max_pause_frames": 3,
+      "max_transition_frames": 6,
+      "max_frames": 300,
+      "seed": 42
+    },
+    "class_type": "ExpressionEditor",
+    "_meta": {
+      "title": "Expression Editor"
+    }
+  },
+  "4": {
+    "inputs": {
+      "frame_rate": 30,
+      "loop_count": 0,
+      "filename_prefix": "LivePortrait",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine"
+    }
+  }
+}
