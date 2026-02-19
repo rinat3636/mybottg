@@ -288,17 +288,17 @@ async def _process_video_generation(
 
         is_admin = user.is_admin or telegram_id in settings.ADMIN_IDS
 
+        # Create generation record first to get request_id for lock
+        request_id = new_request_id()
+        
         # Acquire lock
-        lock_acquired = await acquire_generation_lock(telegram_id)
+        lock_acquired = await acquire_generation_lock(telegram_id, request_id)
         if not lock_acquired:
             await query.edit_message_text(
                 "⏳ У вас уже есть активная генерация. Дождитесь завершения.",
                 reply_markup=cancel_keyboard(),
             )
             return
-
-        # Create generation record
-        request_id = new_request_id()
         generation = await create_generation(
             user_id=user.id,
             prompt=prompt,
