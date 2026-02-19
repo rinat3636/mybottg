@@ -363,4 +363,7 @@ async def _process_video_generation(
 
     except Exception as exc:
         log_exception(exc, trace_id=trace_id, context="_process_video_generation")
-        await query.edit_message_text(safe_user_message(trace_id))
+        await query.edit_message_text(
+            safe_user_message(trace_id),
+            reply_markup=main_menu_keyboard(),
+        )
