@@ -17,7 +17,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton("🖼️ Редактировать", callback_data="menu_edit"),
-                InlineKeyboardButton("🪄 Сгенерировать", callback_data="menu_generate"),
+                InlineKeyboardButton("🧙 Создать изображение", callback_data="menu_generate"),
             ],
             [
                 InlineKeyboardButton("🎬 Видео из изображения", callback_data="menu_video"),
@@ -28,9 +28,9 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton("📚 Примеры промтов", callback_data="menu_examples")],
             [
-                InlineKeyboardButton("👥 Рефералка", callback_data="menu_referral"),
+                InlineKeyboardButton("👥 Реферальная программа", callback_data="menu_referral"),
             ],
-            [InlineKeyboardButton("🆘 Поддержка", callback_data="menu_support")],
+            [InlineKeyboardButton("💬 Поддержка", callback_data="menu_support")],
         ]
     )
 
@@ -52,9 +52,9 @@ def support_link_keyboard() -> InlineKeyboardMarkup:
 def generation_done_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("🔁 Ещё раз", callback_data="gen_again")],
-            [InlineKeyboardButton("🆕 Новая генерация", callback_data="gen_new")],
-            [InlineKeyboardButton("◀️ В меню", callback_data="back_to_menu")],
+            [InlineKeyboardButton("🔁 Повторить", callback_data="gen_again")],
+            [InlineKeyboardButton("🆕 Новый запрос", callback_data="gen_new")],
+            [InlineKeyboardButton("◀️ Главное меню", callback_data="back_to_menu")],
         ]
     )
 
@@ -103,19 +103,19 @@ def edit_quality_keyboard() -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton(
-                    "⚡ Nano Banana PRO — 19 кредитов",
+                    "🔥 Nano Banana Pro — 11 кредитов",
                     callback_data="edit_model_nano_banana_pro",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "🎨 Flux 2 Pro — 9 кредитов",
+                    "✨ Flux 2 Pro — 9 кредитов",
                     callback_data="edit_model_flux_2_pro",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "⭐ Riverflow 2.0 PRO — 45 кредитов",
+                    "💎 Riverflow 2.0 PRO — 45 кредитов",
                     callback_data="edit_model_riverflow_pro",
                 ),
             ],
