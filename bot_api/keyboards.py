@@ -16,11 +16,11 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🖼️ Редактировать", callback_data="menu_edit"),
                 InlineKeyboardButton("🧙 Создать изображение", callback_data="menu_generate"),
             ],
             [
-                InlineKeyboardButton("🎬 Видео из изображения", callback_data="menu_video"),
+                InlineKeyboardButton("🖼️ Редактировать фото", callback_data="menu_edit_photo"),
+                InlineKeyboardButton("🎬 Оживить фото", callback_data="menu_animate_photo"),
             ],
             [
                 InlineKeyboardButton("💎 Баланс", callback_data="menu_balance"),

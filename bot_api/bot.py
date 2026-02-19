@@ -53,6 +53,18 @@ async def create_bot() -> Application:
         video_prompt_handler,
         video_duration_callback,
     )
+    from bot_api.handlers.edit_photo import (
+        start_edit_photo,
+        receive_photo,
+        receive_prompt,
+        cancel_edit_photo,
+    )
+    from bot_api.handlers.animate_photo import (
+        start_animate_photo,
+        receive_photo_for_animation,
+        select_duration,
+        cancel_animate_photo,
+    )
     from bot_api.handlers.cancel import cancel_command, cancel_callback
     from bot_api.handlers.topup import topup_callback
     from bot_api.handlers.payment_check import check_payment_callback
@@ -102,8 +114,9 @@ async def create_bot() -> Application:
     app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^menu_tariffs$"))
     app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^back_to_menu$"))
     app.add_handler(CallbackQueryHandler(generate_start_callback, pattern=r"^menu_generate$"))
-    app.add_handler(CallbackQueryHandler(generate_start_callback, pattern=r"^menu_edit$"))
-    app.add_handler(CallbackQueryHandler(video_start_callback, pattern=r"^menu_video$"))
+    app.add_handler(CallbackQueryHandler(start_edit_photo, pattern=r"^menu_edit_photo$"))
+    app.add_handler(CallbackQueryHandler(start_animate_photo, pattern=r"^menu_animate_photo$"))
+    app.add_handler(CallbackQueryHandler(select_duration, pattern=r"^animate_duration_"))
     app.add_handler(CallbackQueryHandler(video_duration_callback, pattern=r"^video_duration_"))
     app.add_handler(CallbackQueryHandler(examples_menu_callback, pattern=r"^menu_examples$"))
     app.add_handler(CallbackQueryHandler(example_pick_callback, pattern=r"^ex_[a-z]+$"))
@@ -119,7 +132,8 @@ async def create_bot() -> Application:
     app.add_handler(CallbackQueryHandler(support_reply_callback, pattern=r"^support_reply_"))
     app.add_handler(CallbackQueryHandler(cancel_callback, pattern=r"^cancel_action$"))
 
-    # --- Photo handler ---
+    # --- Photo handlers ---
+    # Note: These will be handled by state-based logic in the handlers
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 
     # --- Images as documents ---

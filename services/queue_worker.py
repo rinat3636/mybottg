@@ -137,6 +137,10 @@ async def _process_task(task_id: str, payload: dict) -> None:
     
     if task_type == "video":
         await _process_video_task(task_id, payload)
+    elif task_type == "edit_photo":
+        await _process_edit_photo_task(task_id, payload)
+    elif task_type == "animate_photo":
+        await _process_animate_photo_task(task_id, payload)
     else:
         await _process_image_task(task_id, payload)
 
@@ -478,3 +482,262 @@ async def _process_video_task(task_id: str, payload: dict) -> None:
 
     finally:
         await release_generation_lock(telegram_id)
+"""New task handlers for edit_photo and animate_photo.
+
+This file contains the processing logic for the new task types.
+Append this to queue_worker.py
+"""
+
+import io
+import logging
+from shared.redis_client import (
+    set_task_status,
+    get_task_status,
+    release_generation_lock,
+    TASK_STATUS_PROCESSING,
+    TASK_STATUS_COMPLETED,
+    TASK_STATUS_FAILED,
+    TASK_STATUS_CANCELLED,
+)
+from services.comfy_client import (
+    generate_image,
+    generate_video,
+    edit_image,
+    ComfyUINoFaceError,
+    ComfyUITimeoutError,
+    ComfyUIConnectionError,
+    ComfyUIGenerationError,
+)
+from shared.errors import log_exception, generate_trace_id
+from shared.admin_guard import refund_if_needed
+
+logger = logging.getLogger(__name__)
+
+
+async def _process_edit_photo_task(task_id: str, payload: dict) -> None:
+    """Process a photo editing task with face preservation."""
+    telegram_id = payload.get("telegram_id", 0)
+    user_id = payload.get("user_id", 0)
+    chat_id = payload.get("chat_id", telegram_id)
+    prompt = payload.get("prompt", "")
+    photo_bytes = payload.get("photo_bytes")
+    cost = payload.get("credits_cost", 25)
+    
+    trace_id = generate_trace_id()
+    
+    try:
+        # Send "processing" notification
+        await _notify_user(chat_id, "🎨 Редактируем ваше фото с сохранением лица...")
+        
+        # Check cancellation
+        status = await get_task_status(task_id)
+        if status == TASK_STATUS_CANCELLED:
+            logger.info("Task %s cancelled before processing", task_id)
+            await _handle_refund(payload, task_id)
+            await _notify_user(chat_id, "❌ Редактирование отменено. Кредиты возвращены.")
+            return
+        
+        # Call ComfyUI with IP-Adapter workflow
+        result_bytes = await edit_image(
+            images=[photo_bytes],
+            prompt=prompt,
+            aspect_ratio="1:1",  # Keep original aspect ratio
+        )
+        
+        # Check cancellation again
+        status = await get_task_status(task_id)
+        if status == TASK_STATUS_CANCELLED:
+            logger.info("Task %s cancelled after generation", task_id)
+            await _handle_refund(payload, task_id)
+            await _notify_user(chat_id, "❌ Редактирование отменено. Кредиты возвращены.")
+            return
+        
+        if not result_bytes:
+            logger.error("Edit photo failed: no result for task %s", task_id)
+            await set_task_status(task_id, TASK_STATUS_FAILED)
+            await _handle_refund(payload, task_id)
+            await _notify_user(
+                chat_id,
+                "❌ Не удалось обработать изображение. Кредиты возвращены.\n"
+                "Попробуйте другой промт или фото."
+            )
+            return
+        
+        # Send result
+        await _send_result(chat_id, result_bytes)
+        await set_task_status(task_id, TASK_STATUS_COMPLETED)
+        logger.info("Edit photo task %s completed successfully", task_id)
+    
+    except ComfyUINoFaceError as exc:
+        logger.error("No face detected for task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ На фото не обнаружено лицо. Кредиты возвращены.\n\n"
+            "Загрузите фото с четким изображением лица:\n"
+            "• Лицо хорошо освещено\n"
+            "• Лицо не закрыто\n"
+            "• Лицо занимает достаточную часть фото"
+        )
+    
+    except ComfyUIConnectionError as exc:
+        logger.error("ComfyUI connection error for task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ Сервер генерации недоступен. Кредиты возвращены.\n"
+            "Попробуйте позже."
+        )
+    
+    except ComfyUITimeoutError as exc:
+        logger.error("ComfyUI timeout for task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ Редактирование заняло слишком много времени. Кредиты возвращены.\n"
+            "Попробуйте упростить промт."
+        )
+    
+    except Exception as exc:
+        log_exception(exc, trace_id=trace_id, context=f"edit_photo_task:{task_id}")
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await _handle_refund(payload, task_id)
+        await _notify_user(chat_id, "❌ Произошла ошибка. Кредиты возвращены.")
+        logger.error("Edit photo task %s failed with trace_id=%s", task_id, trace_id)
+    
+    finally:
+        await release_generation_lock(telegram_id)
+
+
+async def _process_animate_photo_task(task_id: str, payload: dict) -> None:
+    """Process a photo animation task with LivePortrait."""
+    telegram_id = payload.get("telegram_id", 0)
+    user_id = payload.get("user_id", 0)
+    chat_id = payload.get("chat_id", telegram_id)
+    photo_bytes = payload.get("photo_bytes")
+    duration_seconds = payload.get("duration_seconds", 10)
+    cost = payload.get("credits_cost", 50)
+    
+    trace_id = generate_trace_id()
+    
+    try:
+        # Send "processing" notification
+        await _notify_user(
+            chat_id,
+            f"🎬 Оживляем ваше фото ({duration_seconds} секунд)...\n"
+            f"⏱️ Это может занять до 2 минут."
+        )
+        
+        # Check cancellation
+        status = await get_task_status(task_id)
+        if status == TASK_STATUS_CANCELLED:
+            logger.info("Task %s cancelled before processing", task_id)
+            await _handle_refund(payload, task_id)
+            await _notify_user(chat_id, "❌ Оживление отменено. Кредиты возвращены.")
+            return
+        
+        # Call ComfyUI with LivePortrait workflow
+        result_bytes = await generate_video(
+            image_bytes=photo_bytes,
+            prompt="",  # LivePortrait doesn't need prompt
+            duration_seconds=duration_seconds,
+        )
+        
+        # Check cancellation again
+        status = await get_task_status(task_id)
+        if status == TASK_STATUS_CANCELLED:
+            logger.info("Task %s cancelled after generation", task_id)
+            await _handle_refund(payload, task_id)
+            await _notify_user(chat_id, "❌ Оживление отменено. Кредиты возвращены.")
+            return
+        
+        if not result_bytes:
+            logger.error("Animate photo failed: no result for task %s", task_id)
+            await set_task_status(task_id, TASK_STATUS_FAILED)
+            await _handle_refund(payload, task_id)
+            await _notify_user(
+                chat_id,
+                "❌ Не удалось создать видео. Кредиты возвращены.\n"
+                "Попробуйте другое фото."
+            )
+            return
+        
+        # Send video result
+        await _send_video_result(chat_id, result_bytes, duration_seconds)
+        await set_task_status(task_id, TASK_STATUS_COMPLETED)
+        logger.info("Animate photo task %s completed successfully", task_id)
+    
+    except ComfyUINoFaceError as exc:
+        logger.error("No face detected for task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ На фото не обнаружено лицо. Кредиты возвращены.\n\n"
+            "Требования к фото:\n"
+            "• Четкое изображение лица\n"
+            "• Хорошее освещение\n"
+            "• Лицо не закрыто (очками, маской и т.д.)\n"
+            "• Лицо смотрит прямо в камеру"
+        )
+    
+    except ComfyUIConnectionError as exc:
+        logger.error("ComfyUI connection error for task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ Сервер генерации недоступен. Кредиты возвращены.\n"
+            "Попробуйте позже."
+        )
+    
+    except ComfyUITimeoutError as exc:
+        logger.error("ComfyUI timeout for task %s: %s", task_id, exc)
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await _handle_refund(payload, task_id)
+        await _notify_user(
+            chat_id,
+            "❌ Генерация видео заняла слишком много времени. Кредиты возвращены.\n"
+            "Попробуйте уменьшить длительность."
+        )
+    
+    except Exception as exc:
+        log_exception(exc, trace_id=trace_id, context=f"animate_photo_task:{task_id}")
+        await set_task_status(task_id, TASK_STATUS_FAILED)
+        await _handle_refund(payload, task_id)
+        await _notify_user(chat_id, "❌ Произошла ошибка. Кредиты возвращены.")
+        logger.error("Animate photo task %s failed with trace_id=%s", task_id, trace_id)
+    
+    finally:
+        await release_generation_lock(telegram_id)
+
+
+async def _send_video_result(chat_id: int, result_bytes: bytes, duration: int) -> None:
+    """Send the generated video to the user."""
+    try:
+        from bot_api.bot import bot_app
+        from bot_api.keyboards import main_menu_keyboard, generation_done_keyboard
+        
+        if not bot_app:
+            return
+        
+        # Send video
+        video_bio = io.BytesIO(result_bytes)
+        video_bio.name = f"animated_{duration}s.mp4"
+        await bot_app.bot.send_video(
+            chat_id=chat_id,
+            video=video_bio,
+            caption=f"✅ Готово! Ваше фото оживлено ({duration} секунд).",
+            supports_streaming=True,
+        )
+        
+        await bot_app.bot.send_message(
+            chat_id=chat_id,
+            text="Хотите сделать ещё?",
+            reply_markup=generation_done_keyboard(),
+        )
+    except Exception as exc:
+        logger.error("Failed to send video result: %s", exc)

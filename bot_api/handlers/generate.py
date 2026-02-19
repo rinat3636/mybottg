@@ -189,6 +189,18 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             from bot_api.handlers.video_generation import video_photo_handler
             await video_photo_handler(update, context)
             return
+        
+        # Edit photo flow
+        if state == "edit_photo_waiting_photo":
+            from bot_api.handlers.edit_photo import receive_photo
+            await receive_photo(update, context)
+            return
+        
+        # Animate photo flow
+        if state == "animate_photo_waiting_photo":
+            from bot_api.handlers.animate_photo import receive_photo_for_animation
+            await receive_photo_for_animation(update, context)
+            return
 
         # If user is not in generation flow, start it implicitly
         if state not in ("waiting_for_generation",):
@@ -319,6 +331,12 @@ async def prompt_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if state == "waiting_for_video_prompt":
             from bot_api.handlers.video_generation import video_prompt_handler
             await video_prompt_handler(update, context)
+            return
+        
+        # Edit photo flow - waiting for prompt
+        if state == "edit_photo_waiting_prompt":
+            from bot_api.handlers.edit_photo import receive_prompt
+            await receive_prompt(update, context)
             return
 
         text = update.message.text.strip() if update.message.text else ""
