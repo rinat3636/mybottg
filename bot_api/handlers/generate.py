@@ -23,7 +23,7 @@ from bot_api.keyboards import (
 from services.generation_service import new_request_id, create_generation
 from services.user_service import get_user_by_telegram_id
 from shared.admin_guard import check_and_charge, refund_if_needed
-from shared.config import GENERATION_COST, DEFAULT_CMD_RATE_LIMIT, DEFAULT_MEDIA_RATE_LIMIT
+from shared.config import GENERATION_COST, DEFAULT_CMD_RATE_LIMIT, DEFAULT_MEDIA_RATE_LIMIT, settings
 from shared.redis_client import (
     QueueLimitError,
     check_rate_limit,
