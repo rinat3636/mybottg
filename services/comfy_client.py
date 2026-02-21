@@ -1,7 +1,7 @@
 """ComfyUI API client for image and video generation.
 
 This client handles communication with a self-hosted ComfyUI instance on RunPod.
-Supports SDXL image generation, IPAdapter photo editing, and WanVideo animation.
+Supports SDXL image generation, SDXL Inpainting (face-preserving), and WanVideo animation.
 
 Production improvements:
 - 10-minute maximum timeout for all generations
@@ -551,6 +551,56 @@ def _build_wanvideo_workflow(
     return workflow
 
 
+def _build_inpainting_workflow(
+    server_filename: str,
+    mask_filename: str,
+    prompt: str,
+    seed: int = 0,
+) -> Dict[str, Any]:
+    """Build SDXL Inpainting workflow for face-preserving photo editing.
+
+    Uses sd_xl_base_1.0_inpainting_0.1.safetensors + VAEEncodeForInpaint.
+    The mask defines which area to inpaint (white=edit, black=preserve).
+    After inpainting, the result is composited back onto the original image
+    so that unmasked areas are pixel-perfect identical to the original.
+
+    Args:
+        server_filename: Filename of the input image on ComfyUI server.
+        mask_filename: Filename of the mask image on ComfyUI server.
+        prompt: Editing instructions from the user.
+        seed: Random seed.
+
+    Returns:
+        Workflow dictionary ready for submission.
+    """
+    workflow = _load_workflow_template("inpainting_workflow")
+
+    for node_id, node in workflow.items():
+        class_type = node.get("class_type", "")
+        title = node.get("_meta", {}).get("title", "").lower()
+
+        if class_type == "LoadImage":
+            if "mask" in title:
+                node["inputs"]["image"] = mask_filename
+            else:
+                node["inputs"]["image"] = server_filename
+
+        elif class_type == "CLIPTextEncode":
+            if "positive" in title:
+                node["inputs"]["text"] = f"{prompt}, high quality, photorealistic, detailed, sharp"
+            elif "negative" in title:
+                node["inputs"]["text"] = (
+                    "text, watermark, low quality, blurry, deformed, ugly, bad anatomy, "
+                    "extra limbs, missing limbs, disfigured, changed face, different person, "
+                    "distorted face, wrong face"
+                )
+
+        elif class_type == "KSampler":
+            node["inputs"]["seed"] = seed if seed else int.from_bytes(uuid.uuid4().bytes[:4], byteorder="big")
+
+    return workflow
+
+
 def _build_ipadapter_workflow(
     server_filename: str,
     prompt: str,
@@ -772,40 +822,54 @@ async def edit_image(
     prompt: str,
     aspect_ratio: Optional[str] = None,
 ) -> Optional[bytes]:
-    """Edit an image using IPAdapter on ComfyUI (face-preserving).
+    """Edit an image using SDXL Inpainting on ComfyUI (face-preserving).
 
-    Uploads the source image to ComfyUI via /upload/image, then submits the
-    ipadapter_workflow with the returned server filename.
+    Automatically generates a mask based on the prompt (e.g., glasses region
+    for 'add sunglasses'), uploads both image and mask to ComfyUI, then
+    runs inpainting that only modifies the masked area while preserving
+    everything else (especially the face) pixel-perfectly.
 
     Args:
         image_bytes: Input image as bytes (single image).
         prompt: Editing instructions from the user.
-        aspect_ratio: Output aspect ratio.
+        aspect_ratio: Output aspect ratio (currently unused for inpainting).
 
     Returns:
         Edited image as bytes, or None if generation fails.
     """
+    from services.mask_generator import generate_mask
+
     client_id = uuid.uuid4().hex
 
     try:
-        # Step 1: Upload image to ComfyUI server
-        server_filename = await _upload_image(image_bytes)
+        # Step 1: Generate mask based on prompt
+        logger.info("Generating mask for inpainting: prompt='%s'", prompt)
+        mask_bytes, mask_type = generate_mask(image_bytes, prompt)
+        logger.info("Mask generated: type=%s, size=%d bytes", mask_type, len(mask_bytes))
+
+        # Step 2: Upload input image to ComfyUI server
+        server_filename = await _upload_image(image_bytes, filename="input_image.png")
         if not server_filename:
             raise ComfyUIGenerationError("Image upload failed — could not get server filename")
 
-        # Step 2: Build IPAdapter workflow using server filename
+        # Step 3: Upload mask to ComfyUI server
+        mask_filename = await _upload_image(mask_bytes, filename="mask_image.png")
+        if not mask_filename:
+            raise ComfyUIGenerationError("Mask upload failed — could not get server filename")
+
+        # Step 4: Build inpainting workflow
         seed = int.from_bytes(uuid.uuid4().bytes[:4], byteorder="big")
-        workflow = _build_ipadapter_workflow(
+        workflow = _build_inpainting_workflow(
             server_filename=server_filename,
+            mask_filename=mask_filename,
             prompt=prompt,
-            aspect_ratio=aspect_ratio,
             seed=seed,
         )
 
-        # Step 3: Submit workflow
+        # Step 5: Submit workflow
         prompt_id = await _submit_workflow(workflow, client_id)
 
-        # Step 4: Wait for completion
+        # Step 6: Wait for completion
         timeout = min(settings.GENERATION_TIMEOUT, _MAX_WAIT_TIME)
         status_data = await _wait_for_completion(
             prompt_id,
@@ -813,10 +877,10 @@ async def edit_image(
             poll_interval=settings.COMFYUI_POLL_INTERVAL,
         )
 
-        # Step 5: Extract output file info
+        # Step 7: Extract output file info
         filename, subfolder, folder_type = _extract_output_info(status_data)
 
-        # Step 6: Download result
+        # Step 8: Download result
         result_bytes = await _download_output(filename, subfolder, folder_type)
 
         # Validate result
@@ -824,7 +888,7 @@ async def edit_image(
             logger.error("Edited image is too small or empty: %d bytes", len(result_bytes) if result_bytes else 0)
             return None
 
-        logger.info("Image editing successful: %d bytes", len(result_bytes))
+        logger.info("Inpainting successful: mask_type=%s, result=%d bytes", mask_type, len(result_bytes))
         return result_bytes
 
     except ComfyUINoFaceError:

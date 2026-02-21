@@ -1,0 +1,122 @@
+{
+  "1": {
+    "inputs": {
+      "image": "input_image.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Input Image"
+    }
+  },
+  "2": {
+    "inputs": {
+      "image": "mask_image.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Mask Image"
+    }
+  },
+  "3": {
+    "inputs": {
+      "ckpt_name": "sd_xl_base_1.0_inpainting_0.1.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load SDXL Inpainting Checkpoint"
+    }
+  },
+  "4": {
+    "inputs": {
+      "channel": "red",
+      "image": ["2", 0]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "Image to Mask"
+    }
+  },
+  "5": {
+    "inputs": {
+      "grow_mask_by": 6,
+      "pixels": ["1", 0],
+      "vae": ["3", 2],
+      "mask": ["4", 0]
+    },
+    "class_type": "VAEEncodeForInpaint",
+    "_meta": {
+      "title": "VAE Encode For Inpaint"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "a person wearing sunglasses, high quality, photorealistic, detailed",
+      "clip": ["3", 1]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive Prompt"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "text, watermark, low quality, blurry, deformed, ugly, bad anatomy, extra limbs, disfigured, changed face, different person",
+      "clip": ["3", 1]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative Prompt"
+    }
+  },
+  "8": {
+    "inputs": {
+      "seed": 42,
+      "steps": 30,
+      "cfg": 7.0,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 0.85,
+      "model": ["3", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["5", 0]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler (Inpainting)"
+    }
+  },
+  "9": {
+    "inputs": {
+      "samples": ["8", 0],
+      "vae": ["3", 2]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "10": {
+    "inputs": {
+      "destination": ["1", 0],
+      "source": ["9", 0],
+      "mask": ["4", 0]
+    },
+    "class_type": "ImageCompositeMasked",
+    "_meta": {
+      "title": "Composite: Paste Inpainted Region Back"
+    }
+  },
+  "11": {
+    "inputs": {
+      "filename_prefix": "InpaintedPhoto",
+      "images": ["10", 0]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}
