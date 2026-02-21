@@ -849,11 +849,11 @@ async def edit_image(
         mask_bytes, mask_type = generate_mask(image_bytes, prompt)
         logger.info("Mask generated: type=%s, size=%d bytes", mask_type, len(mask_bytes))
 
-        # If mask_type is 'full', InsightFace was unavailable — use ControlNet Canny fallback
-        # Full-image inpainting produces grey noise; ControlNet preserves structure much better
+        # If mask_type is 'full', both rembg and InsightFace failed
+        # Fall back to ControlNet Canny img2img with moderate denoise
         if mask_type == "full":
             logger.info(
-                "InsightFace unavailable, falling back to ControlNet Canny img2img for editing"
+                "All segmentation failed (mask=full), falling back to ControlNet Canny img2img"
             )
             return await _edit_with_controlnet(image_bytes, prompt, aspect_ratio, denoise=0.55)
 
