@@ -6,7 +6,7 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "Load Image"
+      "title": "Load Input Image"
     }
   },
   "2": {
@@ -15,12 +15,12 @@
     },
     "class_type": "CheckpointLoaderSimple",
     "_meta": {
-      "title": "Load Checkpoint (SDXL)"
+      "title": "Load SDXL Checkpoint"
     }
   },
   "3": {
     "inputs": {
-      "ipadapter_file": "ip-adapter-plus-face_sdxl_vit-h.bin"
+      "ipadapter_file": "ip-adapter_sdxl.safetensors"
     },
     "class_type": "IPAdapterModelLoader",
     "_meta": {
@@ -29,67 +29,49 @@
   },
   "4": {
     "inputs": {
-      "clip_name": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+      "clip_name": "CLIP-ViT-bigG-14-laion2B-39k-b79k.safetensors"
     },
     "class_type": "CLIPVisionLoader",
     "_meta": {
-      "title": "CLIP Vision Loader"
+      "title": "CLIP Vision Loader (bigG-14 for SDXL)"
     }
   },
   "5": {
     "inputs": {
-      "weight": 0.8,
+      "model": ["2", 0],
+      "ipadapter": ["3", 0],
+      "image": ["1", 0],
+      "clip_vision": ["4", 0],
+      "weight": 0.7,
       "weight_type": "linear",
       "combine_embeds": "concat",
       "start_at": 0.0,
       "end_at": 1.0,
-      "embeds_scaling": "V only",
-      "model": [
-        "2",
-        0
-      ],
-      "ipadapter": [
-        "3",
-        0
-      ],
-      "image": [
-        "1",
-        0
-      ],
-      "clip_vision": [
-        "4",
-        0
-      ]
+      "embeds_scaling": "V only"
     },
-    "class_type": "IPAdapter",
+    "class_type": "IPAdapterAdvanced",
     "_meta": {
-      "title": "IPAdapter"
+      "title": "IPAdapter Advanced"
     }
   },
   "6": {
     "inputs": {
-      "text": "a person, high quality, detailed",
-      "clip": [
-        "2",
-        1
-      ]
+      "text": "a person, high quality, detailed, photorealistic",
+      "clip": ["2", 1]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP Text Encode (Positive Prompt)"
+      "title": "Positive Prompt"
     }
   },
   "7": {
     "inputs": {
       "text": "text, watermark, low quality, blurry, deformed, ugly, bad anatomy",
-      "clip": [
-        "2",
-        1
-      ]
+      "clip": ["2", 1]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP Text Encode (Negative Prompt)"
+      "title": "Negative Prompt"
     }
   },
   "8": {
@@ -110,23 +92,11 @@
       "cfg": 7.0,
       "sampler_name": "euler",
       "scheduler": "karras",
-      "denoise": 0.7,
-      "model": [
-        "5",
-        0
-      ],
-      "positive": [
-        "6",
-        0
-      ],
-      "negative": [
-        "7",
-        0
-      ],
-      "latent_image": [
-        "8",
-        0
-      ]
+      "denoise": 0.85,
+      "model": ["5", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["8", 0]
     },
     "class_type": "KSampler",
     "_meta": {
@@ -135,14 +105,8 @@
   },
   "10": {
     "inputs": {
-      "samples": [
-        "9",
-        0
-      ],
-      "vae": [
-        "2",
-        2
-      ]
+      "samples": ["9", 0],
+      "vae": ["2", 2]
     },
     "class_type": "VAEDecode",
     "_meta": {
@@ -152,10 +116,7 @@
   "11": {
     "inputs": {
       "filename_prefix": "IPAdapter",
-      "images": [
-        "10",
-        0
-      ]
+      "images": ["10", 0]
     },
     "class_type": "SaveImage",
     "_meta": {
