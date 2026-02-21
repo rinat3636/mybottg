@@ -35,7 +35,7 @@ _QUEUE_ENDPOINT = "/queue"
 _UPLOAD_IMAGE_ENDPOINT = "/upload/image"
 
 # Timeouts and polling
-_CONNECTION_TIMEOUT = 10  # seconds
+_CONNECTION_TIMEOUT = 60  # seconds — ComfyUI may take up to 60s to respond when loading model into VRAM
 _DOWNLOAD_TIMEOUT = 60  # seconds
 _MAX_WAIT_TIME = 600  # 10 minutes maximum wait for generation
 _MAX_RETRIES = 3
@@ -68,11 +68,22 @@ class ComfyUINoFaceError(ComfyUIError):
 
 
 def _get_base_url() -> str:
-    """Construct base URL for ComfyUI API."""
+    """Construct base URL for ComfyUI API.
+
+    RunPod proxy URLs (*.proxy.runpod.net) already encode the port in the
+    subdomain (e.g. whckka72jkpswk-8188.proxy.runpod.net) and do NOT accept
+    an explicit :port suffix — adding it breaks the connection.
+    For plain IP/hostname URLs we still append the configured port.
+    """
     url = settings.COMFYUI_API_URL.rstrip("/")
+
+    # RunPod proxy: port is encoded in the subdomain, never append it
+    if "proxy.runpod.net" in url:
+        return url
+
     port = settings.COMFYUI_API_PORT
 
-    # If URL already includes port, don't add it again
+    # If URL already includes an explicit port, don't add it again
     if ":" in url.split("//")[-1]:
         return url
 
@@ -199,6 +210,10 @@ async def _submit_workflow(workflow: Dict[str, Any], client_id: str) -> str:
 async def _check_status(prompt_id: str) -> Dict[str, Any]:
     """Check the status of a generation job.
 
+    Uses /history (without prompt_id in path) because RunPod proxy
+    blocks /history/{id} with 403. We fetch all recent history and
+    filter by prompt_id on the client side.
+
     Args:
         prompt_id: The prompt ID returned by _submit_workflow
 
@@ -209,7 +224,8 @@ async def _check_status(prompt_id: str) -> Dict[str, Any]:
         ComfyUIConnectionError: If ComfyUI is unreachable
     """
     base_url = _get_base_url()
-    url = f"{base_url}{_HISTORY_ENDPOINT}/{prompt_id}"
+    # Use /history without path param — RunPod proxy blocks /history/{id}
+    url = f"{base_url}{_HISTORY_ENDPOINT}"
 
     try:
         async with httpx.AsyncClient(timeout=_CONNECTION_TIMEOUT) as client:
@@ -217,6 +233,7 @@ async def _check_status(prompt_id: str) -> Dict[str, Any]:
             response.raise_for_status()
 
             data = response.json()
+            # Filter by our prompt_id
             return data.get(prompt_id, {})
 
     except Exception as exc:
