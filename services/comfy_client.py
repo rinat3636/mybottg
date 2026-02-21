@@ -822,95 +822,23 @@ async def edit_image(
     prompt: str,
     aspect_ratio: Optional[str] = None,
 ) -> Optional[bytes]:
-    """Edit an image using SDXL Inpainting (when face detected) or ControlNet Canny (fallback).
+    """Edit an image using IPAdapter + ControlNet Canny (like Nano Banana).
 
     Strategy:
-    - If InsightFace is available and detects a face: use SDXL Inpainting with a
-      precise mask (glasses/hat/background region). This preserves the face pixel-perfectly.
-    - If InsightFace is NOT available (e.g., Railway container without GPU libs):
-      fall back to ControlNet Canny img2img with low denoise (0.45) which preserves
-      structure and face much better than full inpainting.
+    - IPAdapter holds the person's appearance (face, hair, style) from the original photo
+    - ControlNet Canny preserves the pose/structure lightly
+    - High denoise (0.80) allows full scene/background change per the prompt
+    - Result: same person in a completely new scene described by the prompt
 
     Args:
         image_bytes: Input image as bytes (single image).
-        prompt: Editing instructions from the user.
+        prompt: Editing instructions from the user (e.g. "person on edge of iceberg").
         aspect_ratio: Output aspect ratio.
 
     Returns:
         Edited image as bytes, or None if generation fails.
     """
-    from services.mask_generator import generate_mask
-
-    client_id = uuid.uuid4().hex
-
-    try:
-        # Step 1: Generate mask based on prompt
-        logger.info("Generating mask for inpainting: prompt='%s'", prompt)
-        mask_bytes, mask_type = generate_mask(image_bytes, prompt)
-        logger.info("Mask generated: type=%s, size=%d bytes", mask_type, len(mask_bytes))
-
-        # If mask_type is 'full', both rembg and InsightFace failed
-        # Fall back to ControlNet Canny img2img with moderate denoise
-        if mask_type == "full":
-            logger.info(
-                "All segmentation failed (mask=full), falling back to ControlNet Canny img2img"
-            )
-            return await _edit_with_controlnet(image_bytes, prompt, aspect_ratio, denoise=0.55)
-
-        # Step 2: Upload input image to ComfyUI server
-        server_filename = await _upload_image(image_bytes, filename="input_image.png")
-        if not server_filename:
-            raise ComfyUIGenerationError("Image upload failed — could not get server filename")
-
-        # Step 3: Upload mask to ComfyUI server
-        mask_filename = await _upload_image(mask_bytes, filename="mask_image.png")
-        if not mask_filename:
-            raise ComfyUIGenerationError("Mask upload failed — could not get server filename")
-
-        # Step 4: Build inpainting workflow
-        seed = int.from_bytes(uuid.uuid4().bytes[:4], byteorder="big")
-        workflow = _build_inpainting_workflow(
-            server_filename=server_filename,
-            mask_filename=mask_filename,
-            prompt=prompt,
-            seed=seed,
-        )
-
-        # Step 5: Submit workflow
-        prompt_id = await _submit_workflow(workflow, client_id)
-
-        # Step 6: Wait for completion
-        timeout = min(settings.GENERATION_TIMEOUT, _MAX_WAIT_TIME)
-        status_data = await _wait_for_completion(
-            prompt_id,
-            timeout=timeout,
-            poll_interval=settings.COMFYUI_POLL_INTERVAL,
-        )
-
-        # Step 7: Extract output file info
-        filename, subfolder, folder_type = _extract_output_info(status_data)
-
-        # Step 8: Download result
-        result_bytes = await _download_output(filename, subfolder, folder_type)
-
-        # Validate result
-        if not result_bytes or len(result_bytes) < 1024:
-            logger.error("Edited image is too small or empty: %d bytes", len(result_bytes) if result_bytes else 0)
-            return None
-
-        logger.info("Inpainting successful: mask_type=%s, result=%d bytes", mask_type, len(result_bytes))
-        return result_bytes
-
-    except ComfyUINoFaceError:
-        raise
-
-    except ComfyUITimeoutError:
-        logger.error("Image editing timed out")
-        raise
-
-    except Exception as exc:
-        logger.error("Image editing failed: %s", exc)
-        return None
+    return await _edit_with_controlnet(image_bytes, prompt, aspect_ratio, denoise=0.80)
 
 
 async def _edit_with_controlnet(
