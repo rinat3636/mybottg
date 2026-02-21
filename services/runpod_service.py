@@ -9,7 +9,7 @@ import os
 from enum import Enum
 from typing import Optional
 
-import aiohttp
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -67,17 +67,16 @@ async def get_pod_status() -> tuple[PodStatus, Optional[str]]:
     """
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
                 RUNPOD_API_URL,
                 json={"query": query, "variables": {"podId": pod_id}},
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}",
                 },
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as resp:
-                data = await resp.json()
+            )
+            data = resp.json()
 
         pod = data.get("data", {}).get("pod")
         if not pod:
@@ -141,8 +140,8 @@ async def start_pod() -> bool:
     """
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
                 RUNPOD_API_URL,
                 json={
                     "query": mutation,
@@ -152,9 +151,8 @@ async def start_pod() -> bool:
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}",
                 },
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as resp:
-                data = await resp.json()
+            )
+            data = resp.json()
 
         errors = data.get("errors")
         if errors:
@@ -198,17 +196,16 @@ async def stop_pod() -> bool:
     """
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
                 RUNPOD_API_URL,
                 json={"query": mutation, "variables": {"podId": pod_id}},
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}",
                 },
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as resp:
-                data = await resp.json()
+            )
+            data = resp.json()
 
         errors = data.get("errors")
         if errors:
