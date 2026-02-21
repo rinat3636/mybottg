@@ -642,12 +642,11 @@ def _build_ipadapter_workflow(
             title = node.get("_meta", {}).get("title", "").lower()
             if "positive" in title:
                 # Combine user prompt with quality booster
-                node["inputs"]["text"] = f"{prompt}, high quality, detailed, sharp, same person, same face"
+                node["inputs"]["text"] = f"{prompt}, high quality, detailed, photorealistic, sharp"
             elif "negative" in title:
                 node["inputs"]["text"] = (
                     "text, watermark, low quality, blurry, deformed, ugly, bad anatomy, "
-                    "extra limbs, missing limbs, disfigured, changed face, different person, "
-                    "different ethnicity, different identity"
+                    "extra limbs, missing limbs, disfigured, different person, different identity"
                 )
 
         elif class_type == "EmptyLatentImage":
@@ -856,7 +855,7 @@ async def edit_image(
             logger.info(
                 "InsightFace unavailable, falling back to ControlNet Canny img2img for editing"
             )
-            return await _edit_with_controlnet(image_bytes, prompt, aspect_ratio, denoise=0.45)
+            return await _edit_with_controlnet(image_bytes, prompt, aspect_ratio, denoise=0.55)
 
         # Step 2: Upload input image to ComfyUI server
         server_filename = await _upload_image(image_bytes, filename="input_image.png")
@@ -900,12 +899,6 @@ async def edit_image(
             return None
 
         logger.info("Inpainting successful: mask_type=%s, result=%d bytes", mask_type, len(result_bytes))
-
-        # Post-process: paste original face back to guarantee face preservation
-        from services.face_restore import paste_original_face
-        result_bytes = paste_original_face(image_bytes, result_bytes)
-        logger.info("Face paste applied: final result=%d bytes", len(result_bytes))
-
         return result_bytes
 
     except ComfyUINoFaceError:
@@ -979,12 +972,6 @@ async def _edit_with_controlnet(
 
         logger.info("ControlNet fallback successful: denoise=%.2f, result=%d bytes",
                     denoise, len(result_bytes))
-
-        # Post-process: paste original face back to guarantee face preservation
-        from services.face_restore import paste_original_face
-        result_bytes = paste_original_face(image_bytes, result_bytes)
-        logger.info("Face paste applied to ControlNet result: final=%d bytes", len(result_bytes))
-
         return result_bytes
 
     except (ComfyUINoFaceError, ComfyUITimeoutError):

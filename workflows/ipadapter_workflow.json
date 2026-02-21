@@ -50,7 +50,7 @@
   },
   "6": {
     "inputs": {
-      "text": "text, watermark, low quality, blurry, deformed, ugly, bad anatomy, extra limbs, disfigured, changed face, different person, different ethnicity",
+      "text": "text, watermark, low quality, blurry, deformed, ugly, bad anatomy, extra limbs, disfigured, different person, different identity",
       "clip": ["2", 1]
     },
     "class_type": "CLIPTextEncode",
@@ -64,9 +64,9 @@
       "negative": ["6", 0],
       "control_net": ["4", 0],
       "image": ["3", 0],
-      "strength": 0.9,
+      "strength": 0.75,
       "start_percent": 0.0,
-      "end_percent": 0.8
+      "end_percent": 0.85
     },
     "class_type": "ControlNetApplyAdvanced",
     "_meta": {
@@ -87,10 +87,10 @@
     "inputs": {
       "seed": 42,
       "steps": 25,
-      "cfg": 6.0,
+      "cfg": 7.0,
       "sampler_name": "dpmpp_2m",
       "scheduler": "karras",
-      "denoise": 0.35,
+      "denoise": 0.55,
       "model": ["2", 0],
       "positive": ["7", 0],
       "negative": ["7", 1],
