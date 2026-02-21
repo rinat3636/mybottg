@@ -84,6 +84,10 @@ class Config:
     COMFYUI_API_KEY: str = ""  # Optional authentication token
     COMFYUI_POLL_INTERVAL: int = DEFAULT_COMFYUI_POLL_INTERVAL
 
+    # RunPod pod management
+    RUNPOD_API_KEY: str = ""
+    RUNPOD_POD_ID: str = ""
+
     # Database
     DATABASE_URL: str = ""
     DB_POOL_SIZE: int = 3
@@ -165,6 +169,8 @@ _OPTIONAL_VARS: List[Tuple[str, str]] = [
     ("YOOKASSA_SECRET_KEY", "YooKassa secret key — payments will not work without it"),
     ("TELEGRAM_WEBHOOK_URL", "Public base URL for webhooks — webhook setup will be skipped"),
     ("COMFYUI_API_KEY", "ComfyUI API authentication token — only needed if auth is enabled"),
+    ("RUNPOD_API_KEY", "RunPod API key — required for pod start/stop control"),
+    ("RUNPOD_POD_ID", "RunPod pod ID — required for pod start/stop control"),
 ]
 
 
@@ -225,9 +231,9 @@ def load_config(*, validate: bool = True) -> Config:
 
     webhook_url = os.getenv("TELEGRAM_WEBHOOK_URL", "").strip()
     webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip() or "changeme"
-    
+
     comfyui_url = os.getenv("COMFYUI_API_URL", "").strip()
-    
+
     if validate:
         _check_env(database_url, redis_url, webhook_url, webhook_secret, comfyui_url)
 
@@ -250,6 +256,8 @@ def load_config(*, validate: bool = True) -> Config:
         COMFYUI_API_PORT=int(os.getenv("COMFYUI_API_PORT", "8188")),
         COMFYUI_API_KEY=os.getenv("COMFYUI_API_KEY", "").strip(),
         COMFYUI_POLL_INTERVAL=int(os.getenv("COMFYUI_POLL_INTERVAL", str(DEFAULT_COMFYUI_POLL_INTERVAL))),
+        RUNPOD_API_KEY=os.getenv("RUNPOD_API_KEY", "").strip(),
+        RUNPOD_POD_ID=os.getenv("RUNPOD_POD_ID", "").strip(),
         DATABASE_URL=database_url,
         DB_POOL_SIZE=int(os.getenv("DB_POOL_SIZE", "3")),
         DB_MAX_OVERFLOW=int(os.getenv("DB_MAX_OVERFLOW", "2")),

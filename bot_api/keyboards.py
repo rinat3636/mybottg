@@ -12,27 +12,30 @@ from shared.config import settings
 # Main menu
 # ---------------------------------------------------------------------------
 
-def main_menu_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+def main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
+    buttons = [
         [
-            [
-                InlineKeyboardButton("🧙 Создать изображение", callback_data="menu_generate"),
-            ],
-            [
-                InlineKeyboardButton("🖼️ Редактировать фото", callback_data="menu_edit_photo"),
-                InlineKeyboardButton("🎬 Оживить фото", callback_data="menu_animate_photo"),
-            ],
-            [
-                InlineKeyboardButton("💎 Баланс", callback_data="menu_balance"),
-                InlineKeyboardButton("💰 Пополнить", callback_data="menu_topup"),
-            ],
-            [InlineKeyboardButton("📚 Примеры промтов", callback_data="menu_examples")],
-            [
-                InlineKeyboardButton("👥 Реферальная программа", callback_data="menu_referral"),
-            ],
-            [InlineKeyboardButton("💬 Поддержка", callback_data="menu_support")],
-        ]
-    )
+            InlineKeyboardButton("🧙 Создать изображение", callback_data="menu_generate"),
+        ],
+        [
+            InlineKeyboardButton("🖼️ Редактировать фото", callback_data="menu_edit_photo"),
+            InlineKeyboardButton("🎬 Оживить фото", callback_data="menu_animate_photo"),
+        ],
+        [
+            InlineKeyboardButton("💎 Баланс", callback_data="menu_balance"),
+            InlineKeyboardButton("💰 Пополнить", callback_data="menu_topup"),
+        ],
+        [InlineKeyboardButton("📚 Примеры промтов", callback_data="menu_examples")],
+        [
+            InlineKeyboardButton("👥 Реферальная программа", callback_data="menu_referral"),
+        ],
+        [InlineKeyboardButton("💬 Поддержка", callback_data="menu_support")],
+    ]
+    if is_admin:
+        buttons.append([
+            InlineKeyboardButton("🖥 Управление подом", callback_data="menu_pod_control"),
+        ])
+    return InlineKeyboardMarkup(buttons)
 
 
 def support_link_keyboard() -> InlineKeyboardMarkup:

@@ -86,6 +86,12 @@ async def create_bot() -> Application:
         unban_command,
         broadcast_command,
     )
+    from bot_api.handlers.runpod_control import (
+        pod_control_callback,
+        pod_start_callback,
+        pod_stop_callback,
+        pod_status_callback,
+    )
 
     # --- Commands ---
     app.add_handler(CommandHandler("start", start_command))
@@ -131,6 +137,12 @@ async def create_bot() -> Application:
     app.add_handler(CallbackQueryHandler(support_callback, pattern=r"^menu_support$"))
     app.add_handler(CallbackQueryHandler(support_reply_callback, pattern=r"^support_reply_"))
     app.add_handler(CallbackQueryHandler(cancel_callback, pattern=r"^cancel_action$"))
+
+    # --- RunPod pod control (admin only) ---
+    app.add_handler(CallbackQueryHandler(pod_control_callback, pattern=r"^menu_pod_control$"))
+    app.add_handler(CallbackQueryHandler(pod_start_callback, pattern=r"^pod_start$"))
+    app.add_handler(CallbackQueryHandler(pod_stop_callback, pattern=r"^pod_stop$"))
+    app.add_handler(CallbackQueryHandler(pod_status_callback, pattern=r"^pod_status$"))
 
     # --- Photo handlers ---
     # Note: These will be handled by state-based logic in the handlers

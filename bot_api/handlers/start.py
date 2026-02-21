@@ -17,7 +17,7 @@ from services.user_service import (
     get_user_by_referral_code,
     get_user_by_telegram_id,
 )
-from shared.config import GENERATION_COST, CREDIT_PACKAGES
+from shared.config import GENERATION_COST, CREDIT_PACKAGES, settings
 from shared.redis_client import clear_user_state
 from shared.errors import log_exception, safe_user_message, generate_trace_id
 
@@ -155,11 +155,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             if referrer_tg_id:
                 extra += "\n🎁 По реферальной ссылке начислено ещё 11 кредитов!"
 
+        is_admin = telegram_id in settings.ADMIN_IDS
         logger.info("trace_id=%s | Sending welcome message", trace_id)
         await update.message.reply_text(
             WELCOME_TEXT.format(name=name) + extra,
             parse_mode="Markdown",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=main_menu_keyboard(is_admin=is_admin),
         )
         logger.info("trace_id=%s | Welcome message sent successfully", trace_id)
     except Exception as exc:
@@ -246,10 +247,11 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         elif query.data == "back_to_menu":
             name = query.from_user.first_name or query.from_user.username or "друг"
             await clear_user_state(telegram_id)
+            is_admin = telegram_id in settings.ADMIN_IDS
             await query.edit_message_text(
                 WELCOME_TEXT.format(name=name),
                 parse_mode="Markdown",
-                reply_markup=main_menu_keyboard(),
+                reply_markup=main_menu_keyboard(is_admin=is_admin),
             )
 
     except Exception as exc:
