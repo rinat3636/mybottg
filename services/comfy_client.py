@@ -642,11 +642,12 @@ def _build_ipadapter_workflow(
             title = node.get("_meta", {}).get("title", "").lower()
             if "positive" in title:
                 # Combine user prompt with quality booster
-                node["inputs"]["text"] = f"{prompt}, high quality, detailed, sharp"
+                node["inputs"]["text"] = f"{prompt}, high quality, detailed, sharp, same person, same face"
             elif "negative" in title:
                 node["inputs"]["text"] = (
                     "text, watermark, low quality, blurry, deformed, ugly, bad anatomy, "
-                    "extra limbs, missing limbs, disfigured"
+                    "extra limbs, missing limbs, disfigured, changed face, different person, "
+                    "different ethnicity, different identity"
                 )
 
         elif class_type == "EmptyLatentImage":
