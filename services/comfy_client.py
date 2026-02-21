@@ -817,28 +817,110 @@ async def generate_video(
         return None
 
 
+def _build_flux_kontext_workflow(
+    server_filename: str,
+    prompt: str,
+    seed: int = 0,
+) -> Dict[str, Any]:
+    """Build Flux Kontext workflow for image editing with identity preservation.
+
+    Flux Kontext is a 12B parameter model that edits images based on text instructions
+    while preserving the identity of the person in the photo. This is the same technology
+    used by Nano Banana Pro.
+
+    Args:
+        server_filename: Filename returned by _upload_image (already on ComfyUI server).
+        prompt: Editing instructions from the user.
+        seed: Random seed.
+
+    Returns:
+        Workflow dictionary ready for submission.
+    """
+    workflow = _load_workflow_template("flux_kontext_workflow")
+
+    for node_id, node in workflow.items():
+        class_type = node.get("class_type", "")
+        title = node.get("_meta", {}).get("title", "").lower()
+
+        if class_type == "LoadImage":
+            node["inputs"]["image"] = server_filename
+
+        elif class_type == "CLIPTextEncode":
+            if "positive" in title:
+                # Flux Kontext works best with descriptive prompts that reference the person
+                node["inputs"]["text"] = prompt
+            elif "negative" in title:
+                node["inputs"]["text"] = ""
+
+        elif class_type == "KSampler":
+            node["inputs"]["noise_seed"] = seed if seed else int.from_bytes(uuid.uuid4().bytes[:4], byteorder="big")
+
+    return workflow
+
+
 async def edit_image(
     image_bytes: bytes,
     prompt: str,
     aspect_ratio: Optional[str] = None,
 ) -> Optional[bytes]:
-    """Edit an image using IPAdapter + ControlNet Canny (like Nano Banana).
+    """Edit an image using Flux Kontext (like Nano Banana Pro).
 
-    Strategy:
-    - IPAdapter holds the person's appearance (face, hair, style) from the original photo
-    - ControlNet Canny preserves the pose/structure lightly
-    - High denoise (0.80) allows full scene/background change per the prompt
-    - Result: same person in a completely new scene described by the prompt
+    Flux Kontext is a 12B parameter model that edits images based on text instructions
+    while preserving the identity of the person in the photo. It understands the image
+    content and applies the requested changes while keeping the person's face, hair,
+    and overall appearance consistent.
 
     Args:
         image_bytes: Input image as bytes (single image).
         prompt: Editing instructions from the user (e.g. "person on edge of iceberg").
-        aspect_ratio: Output aspect ratio.
+        aspect_ratio: Output aspect ratio (not used by Flux Kontext, kept for compatibility).
 
     Returns:
         Edited image as bytes, or None if generation fails.
     """
-    return await _edit_with_controlnet(image_bytes, prompt, aspect_ratio, denoise=0.80)
+    client_id = uuid.uuid4().hex
+
+    try:
+        # Upload image to ComfyUI server
+        server_filename = await _upload_image(image_bytes, filename="input_image.png")
+        if not server_filename:
+            raise ComfyUIGenerationError("Image upload failed")
+
+        seed = int.from_bytes(uuid.uuid4().bytes[:4], byteorder="big")
+
+        # Try Flux Kontext first (best quality, identity-preserving)
+        try:
+            workflow = _build_flux_kontext_workflow(
+                server_filename=server_filename,
+                prompt=prompt,
+                seed=seed,
+            )
+            prompt_id = await _submit_workflow(workflow, client_id)
+            timeout = min(settings.GENERATION_TIMEOUT, _MAX_WAIT_TIME)
+            status_data = await _wait_for_completion(
+                prompt_id,
+                timeout=timeout,
+                poll_interval=settings.COMFYUI_POLL_INTERVAL,
+            )
+            filename, subfolder, folder_type = _extract_output_info(status_data)
+            result_bytes = await _download_output(filename, subfolder, folder_type)
+
+            if result_bytes and len(result_bytes) >= 1024:
+                logger.info("Flux Kontext edit successful: %d bytes", len(result_bytes))
+                return result_bytes
+
+        except Exception as flux_exc:
+            logger.warning("Flux Kontext failed, falling back to ControlNet: %s", flux_exc)
+
+        # Fallback to ControlNet if Flux Kontext fails
+        logger.info("Falling back to ControlNet Canny for image editing")
+        return await _edit_with_controlnet(image_bytes, prompt, aspect_ratio, denoise=0.65)
+
+    except (ComfyUINoFaceError, ComfyUITimeoutError):
+        raise
+    except Exception as exc:
+        logger.error("edit_image failed: %s", exc)
+        return None
 
 
 async def _edit_with_controlnet(
