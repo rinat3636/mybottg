@@ -20,41 +20,25 @@
   },
   "3": {
     "inputs": {
-      "ipadapter_file": "ip-adapter_sdxl.safetensors"
+      "image": ["1", 0],
+      "low_threshold": 0.4,
+      "high_threshold": 0.8
     },
-    "class_type": "IPAdapterModelLoader",
+    "class_type": "Canny",
     "_meta": {
-      "title": "IPAdapter Model Loader"
+      "title": "Canny Edge Detection"
     }
   },
   "4": {
     "inputs": {
-      "clip_name": "CLIP-ViT-bigG-14-laion2B-39k-b79k.safetensors"
+      "control_net_name": "controlnet-canny-sdxl.safetensors"
     },
-    "class_type": "CLIPVisionLoader",
+    "class_type": "ControlNetLoader",
     "_meta": {
-      "title": "CLIP Vision Loader (bigG-14 for SDXL)"
+      "title": "Load ControlNet Canny SDXL"
     }
   },
   "5": {
-    "inputs": {
-      "model": ["2", 0],
-      "ipadapter": ["3", 0],
-      "image": ["1", 0],
-      "clip_vision": ["4", 0],
-      "weight": 0.7,
-      "weight_type": "linear",
-      "combine_embeds": "concat",
-      "start_at": 0.0,
-      "end_at": 1.0,
-      "embeds_scaling": "V only"
-    },
-    "class_type": "IPAdapterAdvanced",
-    "_meta": {
-      "title": "IPAdapter Advanced"
-    }
-  },
-  "6": {
     "inputs": {
       "text": "a person, high quality, detailed, photorealistic",
       "clip": ["2", 1]
@@ -64,9 +48,9 @@
       "title": "Positive Prompt"
     }
   },
-  "7": {
+  "6": {
     "inputs": {
-      "text": "text, watermark, low quality, blurry, deformed, ugly, bad anatomy",
+      "text": "text, watermark, low quality, blurry, deformed, ugly, bad anatomy, extra limbs, disfigured",
       "clip": ["2", 1]
     },
     "class_type": "CLIPTextEncode",
@@ -74,33 +58,47 @@
       "title": "Negative Prompt"
     }
   },
+  "7": {
+    "inputs": {
+      "positive": ["5", 0],
+      "negative": ["6", 0],
+      "control_net": ["4", 0],
+      "image": ["3", 0],
+      "strength": 0.85,
+      "start_percent": 0.0,
+      "end_percent": 1.0
+    },
+    "class_type": "ControlNetApplyAdvanced",
+    "_meta": {
+      "title": "Apply ControlNet Canny"
+    }
+  },
   "8": {
     "inputs": {
-      "width": 1024,
-      "height": 1024,
-      "batch_size": 1
+      "pixels": ["1", 0],
+      "vae": ["2", 2]
     },
-    "class_type": "EmptyLatentImage",
+    "class_type": "VAEEncode",
     "_meta": {
-      "title": "Empty Latent Image"
+      "title": "VAE Encode (img2img)"
     }
   },
   "9": {
     "inputs": {
       "seed": 42,
-      "steps": 25,
-      "cfg": 7.0,
-      "sampler_name": "euler",
+      "steps": 30,
+      "cfg": 8.0,
+      "sampler_name": "dpmpp_2m",
       "scheduler": "karras",
-      "denoise": 0.85,
-      "model": ["5", 0],
-      "positive": ["6", 0],
-      "negative": ["7", 0],
+      "denoise": 0.65,
+      "model": ["2", 0],
+      "positive": ["7", 0],
+      "negative": ["7", 1],
       "latent_image": ["8", 0]
     },
     "class_type": "KSampler",
     "_meta": {
-      "title": "KSampler"
+      "title": "KSampler (img2img + ControlNet)"
     }
   },
   "10": {
@@ -115,7 +113,7 @@
   },
   "11": {
     "inputs": {
-      "filename_prefix": "IPAdapter",
+      "filename_prefix": "EditedPhoto",
       "images": ["10", 0]
     },
     "class_type": "SaveImage",
