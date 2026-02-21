@@ -16,7 +16,8 @@ from shared.redis_client import (
     enqueue_task,
     QueueLimitError,
 )
-from services.user_service import get_or_create_user, deduct_credits
+from services.user_service import get_or_create_user
+from services.generation_service import deduct_for_generation
 from bot_api.keyboards import (
     back_to_menu_keyboard,
     insufficient_funds_keyboard,
@@ -145,7 +146,9 @@ async def receive_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return ConversationHandler.END
     
     # Deduct credits
-    success = await deduct_credits(user.id, EDIT_PHOTO_COST, "edit_photo")
+    import uuid as _uuid
+    _req_id = _uuid.uuid4().hex
+    success = await deduct_for_generation(user.id, EDIT_PHOTO_COST, "edit_photo", _req_id)
     if not success:
         await update.message.reply_text(
             "❌ Ошибка списания кредитов. Попробуйте позже.",
