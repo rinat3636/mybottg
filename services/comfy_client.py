@@ -822,17 +822,19 @@ async def edit_image(
     prompt: str,
     aspect_ratio: Optional[str] = None,
 ) -> Optional[bytes]:
-    """Edit an image using SDXL Inpainting on ComfyUI (face-preserving).
+    """Edit an image using SDXL Inpainting (when face detected) or ControlNet Canny (fallback).
 
-    Automatically generates a mask based on the prompt (e.g., glasses region
-    for 'add sunglasses'), uploads both image and mask to ComfyUI, then
-    runs inpainting that only modifies the masked area while preserving
-    everything else (especially the face) pixel-perfectly.
+    Strategy:
+    - If InsightFace is available and detects a face: use SDXL Inpainting with a
+      precise mask (glasses/hat/background region). This preserves the face pixel-perfectly.
+    - If InsightFace is NOT available (e.g., Railway container without GPU libs):
+      fall back to ControlNet Canny img2img with low denoise (0.45) which preserves
+      structure and face much better than full inpainting.
 
     Args:
         image_bytes: Input image as bytes (single image).
         prompt: Editing instructions from the user.
-        aspect_ratio: Output aspect ratio (currently unused for inpainting).
+        aspect_ratio: Output aspect ratio.
 
     Returns:
         Edited image as bytes, or None if generation fails.
@@ -846,6 +848,14 @@ async def edit_image(
         logger.info("Generating mask for inpainting: prompt='%s'", prompt)
         mask_bytes, mask_type = generate_mask(image_bytes, prompt)
         logger.info("Mask generated: type=%s, size=%d bytes", mask_type, len(mask_bytes))
+
+        # If mask_type is 'full', InsightFace was unavailable — use ControlNet Canny fallback
+        # Full-image inpainting produces grey noise; ControlNet preserves structure much better
+        if mask_type == "full":
+            logger.info(
+                "InsightFace unavailable, falling back to ControlNet Canny img2img for editing"
+            )
+            return await _edit_with_controlnet(image_bytes, prompt, aspect_ratio, denoise=0.45)
 
         # Step 2: Upload input image to ComfyUI server
         server_filename = await _upload_image(image_bytes, filename="input_image.png")
@@ -900,4 +910,72 @@ async def edit_image(
 
     except Exception as exc:
         logger.error("Image editing failed: %s", exc)
+        return None
+
+
+async def _edit_with_controlnet(
+    image_bytes: bytes,
+    prompt: str,
+    aspect_ratio: Optional[str] = None,
+    denoise: float = 0.45,
+) -> Optional[bytes]:
+    """Fallback: edit image using ControlNet Canny img2img with low denoise.
+
+    Low denoise (0.45) preserves the original structure and face much better
+    than the default 0.65. This is used when InsightFace is not available.
+
+    Args:
+        image_bytes: Input image as bytes.
+        prompt: Editing instructions.
+        aspect_ratio: Output aspect ratio.
+        denoise: Denoising strength (lower = more faithful to original).
+
+    Returns:
+        Edited image as bytes, or None if generation fails.
+    """
+    client_id = uuid.uuid4().hex
+
+    try:
+        server_filename = await _upload_image(image_bytes, filename="input_image.png")
+        if not server_filename:
+            raise ComfyUIGenerationError("Image upload failed")
+
+        seed = int.from_bytes(uuid.uuid4().bytes[:4], byteorder="big")
+        workflow = _build_ipadapter_workflow(
+            server_filename=server_filename,
+            prompt=prompt,
+            aspect_ratio=aspect_ratio,
+            seed=seed,
+        )
+
+        # Override denoise to lower value for better face preservation
+        for node_id, node in workflow.items():
+            if node.get("class_type") == "KSampler":
+                node["inputs"]["denoise"] = denoise
+                break
+
+        prompt_id = await _submit_workflow(workflow, client_id)
+        timeout = min(settings.GENERATION_TIMEOUT, _MAX_WAIT_TIME)
+        status_data = await _wait_for_completion(
+            prompt_id,
+            timeout=timeout,
+            poll_interval=settings.COMFYUI_POLL_INTERVAL,
+        )
+
+        filename, subfolder, folder_type = _extract_output_info(status_data)
+        result_bytes = await _download_output(filename, subfolder, folder_type)
+
+        if not result_bytes or len(result_bytes) < 1024:
+            logger.error("ControlNet fallback: result too small: %d bytes",
+                         len(result_bytes) if result_bytes else 0)
+            return None
+
+        logger.info("ControlNet fallback successful: denoise=%.2f, result=%d bytes",
+                    denoise, len(result_bytes))
+        return result_bytes
+
+    except (ComfyUINoFaceError, ComfyUITimeoutError):
+        raise
+    except Exception as exc:
+        logger.error("ControlNet fallback failed: %s", exc)
         return None
