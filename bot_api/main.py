@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="Nano Banana Bot",
+    title="ComfyUI Bot",
     version="3.0.0",
     lifespan=lifespan,
     redirect_slashes=False,

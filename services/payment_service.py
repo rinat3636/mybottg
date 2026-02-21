@@ -158,7 +158,7 @@ async def create_payment(telegram_id: int, amount_rub: int) -> Optional[dict]:
                         "return_url": f"https://t.me/{(await _get_bot_username()) or 'bot'}",
                     },
                     "capture": True,
-                    "description": f"Пополнение {credits} кредитов — Nano Banana Bot",
+                    "description": f"Пополнение {credits} кредитов — ComfyUI Bot",
                     "metadata": {"telegram_id": str(telegram_id), "amount_rub": str(amount_rub)},
                 },
                 idempotency_key,

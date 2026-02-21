@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ContextTypes
 
 from shared.config import settings
@@ -16,34 +16,6 @@ logger = logging.getLogger(__name__)
 def _is_admin(telegram_id: int) -> bool:
     """Check if user is admin."""
     return telegram_id in settings.ADMIN_IDS
-
-
-def pod_control_keyboard(status: PodStatus) -> InlineKeyboardMarkup:
-    """Keyboard with Start/Stop buttons depending on current pod status."""
-    buttons = []
-
-    if status == PodStatus.RUNNING:
-        buttons.append([
-            InlineKeyboardButton("⏹ Остановить под", callback_data="pod_stop"),
-        ])
-    elif status in (PodStatus.EXITED, PodStatus.PAUSED):
-        buttons.append([
-            InlineKeyboardButton("▶️ Запустить под", callback_data="pod_start"),
-        ])
-    else:
-        # Unknown status — show both buttons
-        buttons.append([
-            InlineKeyboardButton("▶️ Запустить", callback_data="pod_start"),
-            InlineKeyboardButton("⏹ Остановить", callback_data="pod_stop"),
-        ])
-
-    buttons.append([
-        InlineKeyboardButton("🔄 Обновить статус", callback_data="pod_status"),
-    ])
-    buttons.append([
-        InlineKeyboardButton("◀️ Назад в меню", callback_data="back_to_menu"),
-    ])
-    return InlineKeyboardMarkup(buttons)
 
 
 def _status_emoji(status: PodStatus) -> str:
@@ -68,6 +40,7 @@ def _status_text(status: PodStatus) -> str:
 
 async def pod_control_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle menu_pod_control callback — show pod status panel."""
+    from bot_api.keyboards import pod_control_keyboard
     query = update.callback_query
     if not query:
         return
@@ -85,13 +58,15 @@ async def pod_control_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         emoji = _status_emoji(status)
         status_str = _status_text(status)
+        is_running = (status == PodStatus.RUNNING)
 
         url_line = ""
-        if comfyui_url and status == PodStatus.RUNNING:
+        if comfyui_url and is_running:
             url_line = f"\n🔗 ComfyUI: `{comfyui_url}`"
 
         text = (
             f"🖥 *Управление RunPod подом*\n\n"
+            f"Под: `{settings.RUNPOD_POD_ID}`\n"
             f"Статус: {emoji} *{status_str}*{url_line}\n\n"
             f"Используйте кнопки ниже для управления:"
         )
@@ -99,7 +74,7 @@ async def pod_control_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(
             text,
             parse_mode="Markdown",
-            reply_markup=pod_control_keyboard(status),
+            reply_markup=pod_control_keyboard(is_running=is_running),
         )
 
     except Exception as exc:
@@ -109,6 +84,7 @@ async def pod_control_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def pod_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle pod_start callback — start the RunPod pod."""
+    from bot_api.keyboards import pod_control_keyboard
     query = update.callback_query
     if not query:
         return
@@ -131,20 +107,19 @@ async def pod_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 "⏳ Под запускается — обычно это занимает 1-3 минуты.\n"
                 "Нажмите «Обновить статус» через минуту."
             )
+            is_running = True
         else:
             text = (
                 "❌ *Не удалось запустить под*\n\n"
-                "Проверьте настройки RUNPOD_API_KEY и RUNPOD_POD_ID.\n"
+                "Проверьте настройки RUNPOD\\_API\\_KEY и RUNPOD\\_POD\\_ID.\n"
                 "Попробуйте запустить вручную через console.runpod.io"
             )
-
-        # Get updated status
-        status, _ = await get_pod_status()
+            is_running = False
 
         await query.edit_message_text(
             text,
             parse_mode="Markdown",
-            reply_markup=pod_control_keyboard(status),
+            reply_markup=pod_control_keyboard(is_running=is_running),
         )
 
     except Exception as exc:
@@ -154,6 +129,7 @@ async def pod_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def pod_stop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle pod_stop callback — stop the RunPod pod."""
+    from bot_api.keyboards import pod_control_keyboard
     query = update.callback_query
     if not query:
         return
@@ -177,20 +153,19 @@ async def pod_stop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 "Данные сохранены на Volume диске.\n\n"
                 "Нажмите «Запустить» когда нужна генерация."
             )
+            is_running = False
         else:
             text = (
                 "❌ *Не удалось остановить под*\n\n"
-                "Проверьте настройки RUNPOD_API_KEY и RUNPOD_POD_ID.\n"
+                "Проверьте настройки RUNPOD\\_API\\_KEY и RUNPOD\\_POD\\_ID.\n"
                 "Попробуйте остановить вручную через console.runpod.io"
             )
-
-        # Get updated status
-        status, _ = await get_pod_status()
+            is_running = True
 
         await query.edit_message_text(
             text,
             parse_mode="Markdown",
-            reply_markup=pod_control_keyboard(status),
+            reply_markup=pod_control_keyboard(is_running=is_running),
         )
 
     except Exception as exc:

@@ -33,7 +33,6 @@ from shared.redis_client_gpu import (
     get_active_gpu_jobs,
     MAX_GPU_JOBS,
 )
-from shared.admin_guard import refund_if_needed
 from services.comfy_client import (
     generate_image,
     generate_video,
@@ -154,7 +153,7 @@ async def _process_image_task(task_id: str, payload: dict) -> None:
     aspect_ratio = payload.get("aspect_ratio")
     generation_id = payload.get("generation_id", 0)
     cost = payload.get("cost", 11)
-    tariff = payload.get("tariff", "nano_banana_pro")
+    tariff = payload.get("tariff", "comfyui")
     request_id = payload.get("request_id", task_id)
     chat_id = payload.get("chat_id", telegram_id)
     is_admin = payload.get("is_admin", False)
@@ -181,7 +180,7 @@ async def _process_image_task(task_id: str, payload: dict) -> None:
             logger.info("Task %s cancelled before ComfyUI call", task_id)
             await complete_generation(generation_id, "cancelled")
             await _handle_refund(payload, task_id)
-            await _notify_user(chat_id, "❌ Генерация отменена. Кредиты возвращены.")
+            await _notify_user(chat_id, "❌ Генерация отменена.")
             return
 
         # All tariffs now use the same SDXL model via ComfyUI
@@ -203,7 +202,7 @@ async def _process_image_task(task_id: str, payload: dict) -> None:
             logger.info("Task %s cancelled during ComfyUI processing, discarding result", task_id)
             await complete_generation(generation_id, "cancelled")
             await _handle_refund(payload, task_id)
-            await _notify_user(chat_id, "❌ Генерация отменена. Кредиты возвращены.")
+            await _notify_user(chat_id, "❌ Генерация отменена.")
             return
 
         if result_bytes:
@@ -231,11 +230,10 @@ async def _process_image_task(task_id: str, payload: dict) -> None:
             await set_task_status(task_id, TASK_STATUS_FAILED)
 
             # Refund
-            await refund_if_needed(user_id, is_admin, cost, request_id, tariff)
-
+            # credits refund skipped (no credits system)
             await _notify_user(
                 chat_id,
-                "❌ Не удалось обработать изображение. Кредиты возвращены.\n"
+                "❌ Не удалось обработать изображение.\n"
                 "Попробуйте другой промт или фото.",
             )
 
@@ -246,7 +244,7 @@ async def _process_image_task(task_id: str, payload: dict) -> None:
         await _handle_refund(payload, task_id)
         await _notify_user(
             chat_id,
-            "❌ Сервер генерации недоступен. Кредиты возвращены.\n"
+            "❌ Сервер генерации недоступен.\n"
             "Попробуйте позже."
         )
 
@@ -257,7 +255,7 @@ async def _process_image_task(task_id: str, payload: dict) -> None:
         await _handle_refund(payload, task_id)
         await _notify_user(
             chat_id,
-            "❌ Генерация заняла слишком много времени. Кредиты возвращены.\n"
+            "❌ Генерация заняла слишком много времени.\n"
             "Попробуйте упростить промт."
         )
 
@@ -277,16 +275,8 @@ async def _process_image_task(task_id: str, payload: dict) -> None:
 
 
 async def _handle_refund(payload: dict, task_id: str) -> None:
-    """Refund credits for a cancelled/failed task using admin_guard."""
-    user_id = payload.get("user_id", 0)
-    cost = payload.get("cost", 11)
-    request_id = payload.get("request_id", task_id)
-    tariff = payload.get("tariff", "nano_banana_pro")
-    is_admin = payload.get("is_admin", False)
-    try:
-        await refund_if_needed(user_id, is_admin, cost, request_id, tariff)
-    except Exception as exc:
-        log_exception(exc, context=f"refund_task:{task_id}")
+    """No-op: credits system is disabled."""
+    pass  # credits refund skipped (no credits system)
 
 
 async def _notify_user(chat_id: int, text: str) -> None:
@@ -395,7 +385,7 @@ async def _process_video_task(task_id: str, payload: dict) -> None:
             logger.info("Video task %s cancelled before ComfyUI call", task_id)
             await complete_generation(generation_id, "cancelled")
             await _handle_refund(payload, task_id)
-            await _notify_user(chat_id, "❌ Генерация отменена. Кредиты возвращены.")
+            await _notify_user(chat_id, "❌ Генерация отменена.")
             return
 
         # Generate video using LivePortrait
@@ -414,7 +404,7 @@ async def _process_video_task(task_id: str, payload: dict) -> None:
             logger.info("Video task %s cancelled during processing, discarding result", task_id)
             await complete_generation(generation_id, "cancelled")
             await _handle_refund(payload, task_id)
-            await _notify_user(chat_id, "❌ Генерация отменена. Кредиты возвращены.")
+            await _notify_user(chat_id, "❌ Генерация отменена.")
             return
 
         if result_bytes:
@@ -428,11 +418,10 @@ async def _process_video_task(task_id: str, payload: dict) -> None:
             await set_task_status(task_id, TASK_STATUS_FAILED)
 
             # Refund
-            await refund_if_needed(user_id, is_admin, cost, request_id, tariff)
-
+            # credits refund skipped (no credits system)
             await _notify_user(
                 chat_id,
-                "❌ Не удалось сгенерировать видео. Кредиты возвращены.\n"
+                "❌ Не удалось сгенерировать видео.\n"
                 "Попробуйте другой промт или фото.",
             )
 
@@ -443,7 +432,7 @@ async def _process_video_task(task_id: str, payload: dict) -> None:
         await _handle_refund(payload, task_id)
         await _notify_user(
             chat_id,
-            "❌ На фото не обнаружено лицо. Кредиты возвращены.\n"
+            "❌ На фото не обнаружено лицо.\n"
             "Загрузите фото с четким изображением лица."
         )
 
@@ -454,7 +443,7 @@ async def _process_video_task(task_id: str, payload: dict) -> None:
         await _handle_refund(payload, task_id)
         await _notify_user(
             chat_id,
-            "❌ Сервер генерации недоступен. Кредиты возвращены.\n"
+            "❌ Сервер генерации недоступен.\n"
             "Попробуйте позже."
         )
 
@@ -509,7 +498,6 @@ from services.comfy_client import (
     ComfyUIGenerationError,
 )
 from shared.errors import log_exception, generate_trace_id
-from shared.admin_guard import refund_if_needed
 
 logger = logging.getLogger(__name__)
 
@@ -558,7 +546,7 @@ async def _process_edit_photo_task(task_id: str, payload: dict) -> None:
             await _handle_refund(payload, task_id)
             await _notify_user(
                 chat_id,
-                "❌ Не удалось обработать изображение. Кредиты возвращены.\n"
+                "❌ Не удалось обработать изображение.\n"
                 "Попробуйте другой промт или фото."
             )
             return
@@ -574,7 +562,7 @@ async def _process_edit_photo_task(task_id: str, payload: dict) -> None:
         await _handle_refund(payload, task_id)
         await _notify_user(
             chat_id,
-            "❌ На фото не обнаружено лицо. Кредиты возвращены.\n\n"
+            "❌ На фото не обнаружено лицо.\n\n"
             "Загрузите фото с четким изображением лица:\n"
             "• Лицо хорошо освещено\n"
             "• Лицо не закрыто\n"
@@ -587,7 +575,7 @@ async def _process_edit_photo_task(task_id: str, payload: dict) -> None:
         await _handle_refund(payload, task_id)
         await _notify_user(
             chat_id,
-            "❌ Сервер генерации недоступен. Кредиты возвращены.\n"
+            "❌ Сервер генерации недоступен.\n"
             "Попробуйте позже."
         )
     
@@ -676,7 +664,7 @@ async def _process_animate_photo_task(task_id: str, payload: dict) -> None:
         await _handle_refund(payload, task_id)
         await _notify_user(
             chat_id,
-            "❌ На фото не обнаружено лицо. Кредиты возвращены.\n\n"
+            "❌ На фото не обнаружено лицо.\n\n"
             "Требования к фото:\n"
             "• Четкое изображение лица\n"
             "• Хорошее освещение\n"
@@ -690,7 +678,7 @@ async def _process_animate_photo_task(task_id: str, payload: dict) -> None:
         await _handle_refund(payload, task_id)
         await _notify_user(
             chat_id,
-            "❌ Сервер генерации недоступен. Кредиты возвращены.\n"
+            "❌ Сервер генерации недоступен.\n"
             "Попробуйте позже."
         )
     
