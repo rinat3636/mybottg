@@ -4,157 +4,94 @@ This directory contains workflow JSON files for ComfyUI generation.
 
 ## Files
 
-- `sdxl_workflow.json` - SDXL text-to-image workflow
-- `liveportrait_workflow.json` - LivePortrait photo animation workflow
+| File | Purpose | Status |
+|------|---------|--------|
+| `sdxl_workflow.json` | SDXL text-to-image (text → photo) | ✅ Ready |
+| `ipadapter_workflow.json` | IPAdapter img2img — face-preserving photo editing | ✅ Ready |
+| `wanvideo_i2v_workflow.json` | WanVideo Image-to-Video — 10-second animation | ✅ Ready |
+| `liveportrait_workflow.json` | LivePortrait (legacy, replaced by WanVideo) | ⚠️ Deprecated |
 
-## Customization Instructions
+## Required Models on RunPod
 
-These workflow templates are **generic examples** and must be customized based on your actual ComfyUI setup.
-
-### How to Get Your Workflow JSON
-
-1. **Open ComfyUI** in your browser (e.g., `http://your-runpod-ip:8188`)
-
-2. **Load or create your workflow** in the ComfyUI interface:
-   - For SDXL: Set up a basic text-to-image workflow
-   - For LivePortrait: Set up a photo animation workflow
-
-3. **Export the workflow**:
-   - Click "Save (API Format)" button in ComfyUI
-   - This saves the workflow in API-compatible JSON format
-   - Save it to this directory
-
-4. **Update the workflow files**:
-   - Replace `sdxl_workflow.json` with your SDXL workflow
-   - Replace `liveportrait_workflow.json` with your LivePortrait workflow
-
-### Important Notes
-
-#### SDXL Workflow Requirements
-
-Your SDXL workflow must include these nodes:
-
-1. **CheckpointLoaderSimple** - Load SDXL model
-   - Update `ckpt_name` to match your model file name
-   - Example: `"sd_xl_base_1.0.safetensors"` or `"sdxl_model.safetensors"`
-
-2. **CLIPTextEncode (Positive)** - For the main prompt
-   - The code will update the `text` input dynamically
-   - Add `"_meta": {"title": "CLIP Text Encode (Positive Prompt)"}` to identify it
-
-3. **CLIPTextEncode (Negative)** - For negative prompt
-   - Add `"_meta": {"title": "CLIP Text Encode (Negative Prompt)"}` to identify it
-
-4. **KSampler** - Sampling settings
-   - The code will update: `seed`, `steps`, `cfg`
-
-5. **EmptyLatentImage** - Image dimensions
-   - The code will update: `width`, `height`
-
-6. **SaveImage** - Save the output
-   - Must be present to generate output files
-
-#### LivePortrait Workflow Requirements
-
-Your LivePortrait workflow must include:
-
-1. **LoadImage** - Load the input photo
-   - The code will handle image upload
-
-2. **LivePortraitProcess** - Main animation node
-   - The code will update `duration_frames` based on requested duration
-
-3. **VHS_VideoCombine** or similar - Video output node
-   - Must save as MP4 format
-   - Recommended settings: 30fps, H.264 codec
-
-### Node ID Mapping
-
-The node IDs (e.g., "3", "4", "5") in the workflow JSON are important:
-
-- They define the connections between nodes
-- When you export from ComfyUI, these IDs are automatically assigned
-- The Python code searches by `class_type` and `_meta.title`, not by node ID
-- So you don't need to manually adjust IDs
-
-### Testing Your Workflow
-
-Before using in production:
-
-1. **Test in ComfyUI UI** - Make sure the workflow runs successfully
-2. **Test via API** - Use the ComfyUI API to submit the workflow
-3. **Check outputs** - Verify that output files are generated correctly
-
-### Example: Getting SDXL Workflow
-
-```bash
-# 1. SSH into your RunPod instance
-ssh root@your-runpod-ip
-
-# 2. Navigate to ComfyUI directory
-cd /workspace/ComfyUI
-
-# 3. Check installed models
-ls models/checkpoints/
-
-# 4. Update the workflow JSON with the correct model name
-# Edit: workflows/sdxl_workflow.json
-# Change: "ckpt_name": "YOUR_MODEL_NAME.safetensors"
+### SDXL (text-to-image)
+```
+/workspace/ComfyUI/models/checkpoints/sd_xl_base_1.0.safetensors  (~7 GB)
 ```
 
-### Example: Installing LivePortrait
+### IPAdapter (photo editing)
+```
+/workspace/ComfyUI/models/ipadapter/ip-adapter-plus-face_sdxl_vit-h.bin  (~1 GB)
+/workspace/ComfyUI/models/clip/CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors  (~2.5 GB)
+```
 
-If LivePortrait is not installed on your RunPod instance:
+### WanVideo (photo animation)
+```
+/workspace/ComfyUI/models/diffusion_models/wan2.1_i2v_480p_14B_fp8_scaled.safetensors  (~14 GB)
+/workspace/ComfyUI/models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors  (~6.3 GB)
+/workspace/ComfyUI/models/vae/wan_2.1_vae.safetensors  (~330 MB)
+```
+
+## Required Custom Nodes
 
 ```bash
-# SSH into RunPod
-ssh root@your-runpod-ip
-
-# Navigate to ComfyUI custom nodes
 cd /workspace/ComfyUI/custom_nodes
 
-# Clone LivePortrait node
-git clone https://github.com/kijai/ComfyUI-LivePortraitKJ.git
+# IPAdapter Plus (for photo editing)
+git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git
 
-# Install dependencies
-cd ComfyUI-LivePortraitKJ
-pip install -r requirements.txt
+# WanVideo Wrapper (for photo animation)
+git clone https://github.com/kijai/ComfyUI-WanVideoWrapper.git
+cd ComfyUI-WanVideoWrapper && pip install -r requirements.txt && cd ..
 
-# Download models (follow the node's README)
-# Usually models go in: ComfyUI/models/liveportrait/
-
-# Restart ComfyUI
-# Then create your workflow in the UI and export it
+# Video Helper Suite (for saving video output)
+git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git
+cd ComfyUI-VideoHelperSuite && pip install -r requirements.txt && cd ..
 ```
+
+## How Image Upload Works
+
+All workflows use the ComfyUI `/upload/image` endpoint to upload images before
+referencing them by filename in the workflow JSON. Embedding base64 data directly
+in the workflow is **not supported** by ComfyUI.
+
+The `comfy_client.py` handles this automatically via `_upload_image()`.
+
+## Workflow Node Requirements
+
+### SDXL Workflow
+- `CheckpointLoaderSimple` — model loader
+- `CLIPTextEncode` (title "Positive") — positive prompt
+- `CLIPTextEncode` (title "Negative") — negative prompt
+- `KSampler` — sampling parameters
+- `EmptyLatentImage` — dimensions
+- `SaveImage` — output
+
+### IPAdapter Workflow
+- `LoadImage` — input image (filename set via `_upload_image`)
+- `IPAdapterModelLoader` — IPAdapter model
+- `CLIPVisionLoader` — CLIP Vision model
+- `IPAdapter` — main processing node
+- `CheckpointLoaderSimple` — SDXL base model
+- `CLIPTextEncode` (Positive/Negative) — prompts
+- `KSampler` — sampling
+- `VAEDecode` — decoding
+- `SaveImage` — output
+
+### WanVideo Workflow
+- `LoadImage` — input image (filename set via `_upload_image`)
+- `WanVideoModelLoader` — WanVideo model
+- `WanVideoTextEncode` — text encoder + prompts (node with both positive/negative)
+- `WanVideoVAELoader` — VAE
+- `WanVideoSampler` — sampling (`num_frames` updated per duration)
+- `WanVideoVAEDecode` — decoding
+- `VHS_VideoCombine` — video output (MP4, H.264)
 
 ## Troubleshooting
 
-### "Workflow template not found" error
+**"Workflow template not found"** — check that JSON files exist in `workflows/`
 
-- Make sure the JSON files exist in the `workflows/` directory
-- Check file permissions: `chmod 644 workflows/*.json`
+**"No output file found"** — verify output node (SaveImage / VHS_VideoCombine) is connected
 
-### "No output file found" error
+**"Image upload failed"** — check ComfyUI is running and `/upload/image` endpoint is accessible
 
-- Check that your workflow has a SaveImage or Video output node
-- Verify the output node is connected properly
-- Check ComfyUI logs for generation errors
-
-### "Invalid workflow" error
-
-- Validate your JSON syntax: `python -m json.tool workflow.json`
-- Make sure all node connections are valid
-- Test the workflow in ComfyUI UI first
-
-### Model not found
-
-- Update `ckpt_name` in the workflow to match your actual model file
-- Check model path: `ls /workspace/ComfyUI/models/checkpoints/`
-- Make sure the model is fully downloaded
-
-## Additional Resources
-
-- [ComfyUI Documentation](https://github.com/comfyanonymous/ComfyUI)
-- [ComfyUI API Documentation](https://github.com/comfyanonymous/ComfyUI/wiki/API)
-- [LivePortrait Node](https://github.com/kijai/ComfyUI-LivePortraitKJ)
-- [SDXL on ComfyUI](https://comfyanonymous.github.io/ComfyUI_examples/sdxl/)
+**Model not found** — update model filenames in JSON to match files in `/workspace/ComfyUI/models/`
