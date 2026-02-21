@@ -900,6 +900,12 @@ async def edit_image(
             return None
 
         logger.info("Inpainting successful: mask_type=%s, result=%d bytes", mask_type, len(result_bytes))
+
+        # Post-process: paste original face back to guarantee face preservation
+        from services.face_restore import paste_original_face
+        result_bytes = paste_original_face(image_bytes, result_bytes)
+        logger.info("Face paste applied: final result=%d bytes", len(result_bytes))
+
         return result_bytes
 
     except ComfyUINoFaceError:
@@ -973,6 +979,12 @@ async def _edit_with_controlnet(
 
         logger.info("ControlNet fallback successful: denoise=%.2f, result=%d bytes",
                     denoise, len(result_bytes))
+
+        # Post-process: paste original face back to guarantee face preservation
+        from services.face_restore import paste_original_face
+        result_bytes = paste_original_face(image_bytes, result_bytes)
+        logger.info("Face paste applied to ControlNet result: final=%d bytes", len(result_bytes))
+
         return result_bytes
 
     except (ComfyUINoFaceError, ComfyUITimeoutError):
