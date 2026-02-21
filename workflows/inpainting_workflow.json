@@ -102,7 +102,10 @@
     "inputs": {
       "destination": ["1", 0],
       "source": ["9", 0],
-      "mask": ["4", 0]
+      "mask": ["4", 0],
+      "x": 0,
+      "y": 0,
+      "resize_source": false
     },
     "class_type": "ImageCompositeMasked",
     "_meta": {
